@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AdminRestaurants from './pages/AdminRestaurants';
 import ManagerTables from './pages/ManagerTables';
+import ManagerMenu from './pages/ManagerMenu';
 import PublicTable from './pages/PublicTable';
 
 export const App = () => {
@@ -31,6 +32,7 @@ export const App = () => {
           {/* Manager/Super Admin only routes */}
           <Route element={<ProtectedRoute allowedRoles={['MANAGER', 'SUPER_ADMIN']} />}>
             <Route path="/manager/tables" element={<ManagerTables />} />
+            <Route path="/manager/menu" element={<ManagerMenu />} />
           </Route>
 
           {/* Fallback */}

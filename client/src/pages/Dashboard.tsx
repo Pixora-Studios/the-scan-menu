@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { LogOut, ShieldAlert, UserCheck, Shield, TableProperties } from 'lucide-react';
+import { LogOut, ShieldAlert, UserCheck, Shield, TableProperties, Library } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
@@ -12,7 +12,7 @@ export const Dashboard: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-slate-100 px-6 py-4 flex items-center justify-between">
         <h1 className="font-display tracking-tight text-3xl font-semibold text-slate-900">
-          Pixora QR <span className="text-xs font-sans px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-medium">Phase 2 Dev</span>
+          Pixora QR <span className="text-xs font-sans px-2 py-0.5 bg-amber-100 text-amber-800 rounded font-medium">Phase 3 Dev</span>
         </h1>
         <button
           onClick={logout}
@@ -75,18 +75,33 @@ export const Dashboard: React.FC = () => {
             )}
 
             {(user?.role === 'MANAGER' || user?.role === 'SUPER_ADMIN') && (
-              <Link
-                to="/manager/tables"
-                className="flex items-center gap-3 w-full p-4 border border-slate-100 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-amber-200 transition-all group"
-              >
-                <div className="h-10 w-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 group-hover:bg-amber-100 transition">
-                  <TableProperties className="w-5 h-5" strokeWidth={1.75} />
-                </div>
-                <div className="text-left">
-                  <h4 className="text-sm font-bold text-slate-800">Manage Restaurant Tables</h4>
-                  <p className="text-xs text-slate-500">Configure tables, view QRs, and regenerate secure access codes</p>
-                </div>
-              </Link>
+              <>
+                <Link
+                  to="/manager/tables"
+                  className="flex items-center gap-3 w-full p-4 border border-slate-100 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-amber-200 transition-all group"
+                >
+                  <div className="h-10 w-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 group-hover:bg-amber-100 transition">
+                    <TableProperties className="w-5 h-5" strokeWidth={1.75} />
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-sm font-bold text-slate-800">Manage Restaurant Tables</h4>
+                    <p className="text-xs text-slate-500">Configure tables, view QRs, and regenerate secure access codes</p>
+                  </div>
+                </Link>
+
+                <Link
+                  to="/manager/menu"
+                  className="flex items-center gap-3 w-full p-4 border border-slate-100 rounded-2xl bg-slate-50 hover:bg-slate-100/50 hover:border-amber-200 transition-all group"
+                >
+                  <div className="h-10 w-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 group-hover:bg-amber-100 transition">
+                    <Library className="w-5 h-5" strokeWidth={1.75} />
+                  </div>
+                  <div className="text-left">
+                    <h4 className="text-sm font-bold text-slate-800">Manage Restaurant Menu</h4>
+                    <p className="text-xs text-slate-500">Configure menu categories, detailed menu items, and direct uploads</p>
+                  </div>
+                </Link>
+              </>
             )}
           </div>
 
