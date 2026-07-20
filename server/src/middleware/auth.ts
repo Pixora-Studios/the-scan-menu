@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { TokenService, TokenUserPayload } from '../services/token.service';
 import { UserRepository } from '../repositories/user.repository';
+import { RestaurantStaff } from '../models/RestaurantStaff';
 import { sendError } from '../utils/response';
+import mongoose from 'mongoose';
 
 const tokenService = new TokenService();
 const userRepository = new UserRepository();
@@ -80,4 +82,60 @@ export const requireRole = (...roles: string[]) => {
 
     next();
   };
+};
+
+/**
+ * Middleware that checks if the authenticated user has an active RestaurantStaff row for the :restaurantId in the route.
+ * Super admins automatically bypass this check.
+ */
+export const requireRestaurantAccess = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    if (!req.user) {
+      sendError(res, 'UNAUTHORIZED', 'Authentication is required', null, 401);
+      return;
+    }
+
+    // Super admins bypass restaurant scope restrictions
+    if (req.user.role === 'SUPER_ADMIN') {
+      next();
+      return;
+    }
+
+    const { restaurantId } = req.params;
+    if (!restaurantId) {
+      sendError(res, 'BAD_REQUEST', 'Missing restaurantId in request parameters', null, 400);
+      return;
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(restaurantId)) {
+      sendError(res, 'BAD_REQUEST', 'Invalid restaurantId format', null, 400);
+      return;
+    }
+
+    // Search for active join table record
+    const staffRecord = await RestaurantStaff.findOne({
+      userId: new mongoose.Types.ObjectId(req.user.id),
+      restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      isActive: true,
+    });
+
+    if (!staffRecord) {
+      sendError(
+        res,
+        'FORBIDDEN',
+        'Access denied. You do not have permissions for this restaurant.',
+        null,
+        403
+      );
+      return;
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 };

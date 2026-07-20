@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { UserRepository } from '../repositories/user.repository';
 import { RefreshTokenRepository } from '../repositories/refreshToken.repository';
 import { TokenService } from '../services/token.service';
+import { RestaurantStaff } from '../models/RestaurantStaff';
 import { sendSuccess, sendError } from '../utils/response';
 
 export class AuthController {
@@ -57,6 +58,9 @@ export class AuthController {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
+      const staffRecords = await RestaurantStaff.find({ userId: user.id, isActive: true });
+      const assignedRestaurants = staffRecords.map((s) => s.restaurantId.toString());
+
       sendSuccess(
         res,
         {
@@ -67,6 +71,7 @@ export class AuthController {
             name: user.name,
             role: user.role,
             isActive: user.isActive,
+            restaurants: assignedRestaurants,
           },
         },
         'Login successful'
@@ -169,6 +174,9 @@ export class AuthController {
         return;
       }
 
+      const staffRecords = await RestaurantStaff.find({ userId: user.id, isActive: true });
+      const assignedRestaurants = staffRecords.map((s) => s.restaurantId.toString());
+
       sendSuccess(
         res,
         {
@@ -178,6 +186,7 @@ export class AuthController {
             name: user.name,
             role: user.role,
             isActive: user.isActive,
+            restaurants: assignedRestaurants,
           },
         },
         'User details fetched successfully'

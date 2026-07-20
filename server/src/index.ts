@@ -27,6 +27,9 @@ if (missingEnv.length > 0) {
 }
 
 import authRoutes from './routes/auth.routes';
+import adminRoutes from './routes/admin.routes';
+import restaurantRoutes from './routes/restaurant.routes';
+import publicRoutes from './routes/public.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { SocketService } from './sockets/socket.service';
 import { logger } from './utils/logger';
@@ -59,6 +62,9 @@ app.use(cookieParser());
 
 // Routing
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/restaurants', restaurantRoutes);
+app.use('/api/v1/public', publicRoutes);
 
 // Global Error Handler
 app.use(errorHandler);

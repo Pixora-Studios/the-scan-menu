@@ -4,6 +4,7 @@ export interface User {
   name: string;
   role: 'SUPER_ADMIN' | 'MANAGER' | 'STAFF';
   isActive: boolean;
+  restaurants?: string[];
 }
 
 export interface ApiResponse<T = any> {

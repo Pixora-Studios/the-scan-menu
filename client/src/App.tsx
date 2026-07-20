@@ -3,18 +3,34 @@ import { AuthProvider } from './hooks/useAuth';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AdminRestaurants from './pages/AdminRestaurants';
+import ManagerTables from './pages/ManagerTables';
+import PublicTable from './pages/PublicTable';
 
 export const App = () => {
   return (
     <Router>
       <AuthProvider>
         <Routes>
-          {/* Public Routes */}
+          {/* Public customer dining view */}
+          <Route path="/r/:restaurantSlug/t/:tableToken" element={<PublicTable />} />
+
+          {/* Public login */}
           <Route path="/login" element={<Login />} />
 
-          {/* Protected Routes */}
+          {/* Protected Routes (all roles) */}
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Dashboard />} />
+          </Route>
+
+          {/* Super Admin only routes */}
+          <Route element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']} />}>
+            <Route path="/admin/restaurants" element={<AdminRestaurants />} />
+          </Route>
+
+          {/* Manager/Super Admin only routes */}
+          <Route element={<ProtectedRoute allowedRoles={['MANAGER', 'SUPER_ADMIN']} />}>
+            <Route path="/manager/tables" element={<ManagerTables />} />
           </Route>
 
           {/* Fallback */}
