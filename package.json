@@ -1,0 +1,22 @@
+{
+  "name": "pixora-qr-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pixora QR - Standalone restaurant ordering and operations platform.",
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "keywords": [
+    "qr-menu",
+    "restaurant-ordering",
+    "saas"
+  ],
+  "author": "Pixora Studios",
+  "license": "UNLICENSED"
+}
