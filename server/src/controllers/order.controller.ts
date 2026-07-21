@@ -13,6 +13,265 @@ export class OrderController {
     this.getOrderDetails = this.getOrderDetails.bind(this);
     this.updateOrderStatus = this.updateOrderStatus.bind(this);
     this.cancelOrder = this.cancelOrder.bind(this);
+    this.getAnalytics = this.getAnalytics.bind(this);
+  }
+
+  async getAnalytics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId } = req.params;
+      const { startDate, endDate, priorStartDate, priorEndDate } = req.query;
+
+      if (!startDate || !endDate) {
+        sendError(res, 'BAD_REQUEST', 'startDate and endDate are required query parameters', null, 400);
+        return;
+      }
+
+      const currentStart = new Date(startDate as string);
+      const currentEnd = new Date(endDate as string);
+
+      if (isNaN(currentStart.getTime()) || isNaN(currentEnd.getTime())) {
+        sendError(res, 'BAD_REQUEST', 'Invalid current date format', null, 400);
+        return;
+      }
+
+      // Default prior range to same length as current range if not provided
+      let priorStart: Date;
+      let priorEnd: Date;
+      if (priorStartDate && priorEndDate) {
+        priorStart = new Date(priorStartDate as string);
+        priorEnd = new Date(priorEndDate as string);
+      } else {
+        const rangeMs = currentEnd.getTime() - currentStart.getTime();
+        priorStart = new Date(currentStart.getTime() - rangeMs);
+        priorEnd = new Date(currentEnd.getTime() - rangeMs);
+      }
+
+      if (isNaN(priorStart.getTime()) || isNaN(priorEnd.getTime())) {
+        sendError(res, 'BAD_REQUEST', 'Invalid prior date format', null, 400);
+        return;
+      }
+
+      const restIdObj = new mongoose.Types.ObjectId(restaurantId);
+
+      // Fetch current period orders
+      const currentOrders = await Order.find({
+        restaurantId: restIdObj,
+        createdAt: { $gte: currentStart, $lte: currentEnd },
+      }).populate('tableId', 'displayName tableNumber');
+
+      // Fetch prior period orders
+      const priorOrders = await Order.find({
+        restaurantId: restIdObj,
+        createdAt: { $gte: priorStart, $lte: priorEnd },
+      });
+
+      // Helper function to calculate metrics from an orders array
+      const calculateMetrics = (orders: any[]) => {
+        let revenue = 0;
+        const totalCount = orders.length;
+        let nonCancelledCount = 0;
+        let fulfillmentSumMs = 0;
+        let servedCount = 0;
+
+        for (const order of orders) {
+          if (order.status !== 'CANCELLED') {
+            revenue += order.total; // total in cents/paise
+            nonCancelledCount++;
+          }
+          if (order.status === 'SERVED') {
+            const duration = order.updatedAt.getTime() - order.createdAt.getTime();
+            if (duration >= 0) {
+              fulfillmentSumMs += duration;
+              servedCount++;
+            }
+          }
+        }
+
+        const aov = nonCancelledCount > 0 ? Math.round(revenue / nonCancelledCount) : 0;
+        const fulfillmentTime = servedCount > 0 ? parseFloat((fulfillmentSumMs / servedCount / 60000).toFixed(2)) : 0; // minutes
+
+        return {
+          revenue,
+          orderCount: totalCount,
+          nonCancelledCount,
+          aov,
+          fulfillmentTime,
+        };
+      };
+
+      const currentMetrics = calculateMetrics(currentOrders);
+      const priorMetrics = calculateMetrics(priorOrders);
+
+      // Helper for percent change
+      const getPercentChange = (current: number, prior: number): number => {
+        if (prior === 0) {
+          return current > 0 ? 100 : 0;
+        }
+        return parseFloat((((current - prior) / prior) * 100).toFixed(2));
+      };
+
+      const summary = {
+        revenue: {
+          current: currentMetrics.revenue,
+          prior: priorMetrics.revenue,
+          change: getPercentChange(currentMetrics.revenue, priorMetrics.revenue),
+        },
+        orderCount: {
+          current: currentMetrics.orderCount,
+          prior: priorMetrics.orderCount,
+          change: getPercentChange(currentMetrics.orderCount, priorMetrics.orderCount),
+        },
+        aov: {
+          current: currentMetrics.aov,
+          prior: priorMetrics.aov,
+          change: getPercentChange(currentMetrics.aov, priorMetrics.aov),
+        },
+        fulfillmentTime: {
+          current: currentMetrics.fulfillmentTime,
+          prior: priorMetrics.fulfillmentTime,
+          change: getPercentChange(currentMetrics.fulfillmentTime, priorMetrics.fulfillmentTime),
+        },
+      };
+
+      // 2. Timeline aggregation (hours for < 28h range, days for larger ranges)
+      const rangeMs = currentEnd.getTime() - currentStart.getTime();
+      const isMultiDay = rangeMs > 28 * 60 * 60 * 1000;
+      const timelineMap: Record<string, { label: string; revenue: number; orderCount: number }> = {};
+
+      if (isMultiDay) {
+        const temp = new Date(currentStart);
+        while (temp <= currentEnd) {
+          const dayStr = temp.toISOString().split('T')[0];
+          timelineMap[dayStr] = { label: dayStr, revenue: 0, orderCount: 0 };
+          temp.setDate(temp.getDate() + 1);
+        }
+
+        for (const order of currentOrders) {
+          if (order.status !== 'CANCELLED') {
+            const dayStr = order.createdAt.toISOString().split('T')[0];
+            if (timelineMap[dayStr]) {
+              timelineMap[dayStr].revenue += order.total;
+              timelineMap[dayStr].orderCount += 1;
+            }
+          }
+        }
+      } else {
+        for (let h = 0; h < 24; h++) {
+          const label = `${String(h).padStart(2, '0')}:00`;
+          timelineMap[label] = { label, revenue: 0, orderCount: 0 };
+        }
+
+        for (const order of currentOrders) {
+          if (order.status !== 'CANCELLED') {
+            const hour = order.createdAt.getUTCHours();
+            const label = `${String(hour).padStart(2, '0')}:00`;
+            if (timelineMap[label]) {
+              timelineMap[label].revenue += order.total;
+              timelineMap[label].orderCount += 1;
+            }
+          }
+        }
+      }
+
+      const timeline = Object.values(timelineMap);
+
+      // 3. Top selling items
+      const itemsMap: Record<string, { name: string; quantity: number; revenue: number }> = {};
+      for (const order of currentOrders) {
+        if (order.status !== 'CANCELLED') {
+          for (const item of order.items) {
+            const key = item.nameSnapshot;
+            if (!itemsMap[key]) {
+              itemsMap[key] = { name: item.nameSnapshot, quantity: 0, revenue: 0 };
+            }
+            itemsMap[key].quantity += item.quantity;
+            itemsMap[key].revenue += item.unitPriceSnapshot * item.quantity;
+          }
+        }
+      }
+
+      const topSelling = Object.values(itemsMap).sort((a, b) => b.quantity - a.quantity);
+
+      // 4. Order status breakdown
+      const statusCounts: Record<string, number> = {
+        PENDING: 0,
+        ACCEPTED: 0,
+        PREPARING: 0,
+        READY: 0,
+        SERVED: 0,
+        CANCELLED: 0,
+      };
+
+      for (const order of currentOrders) {
+        statusCounts[order.status] = (statusCounts[order.status] || 0) + 1;
+      }
+
+      const statusBreakdown = Object.entries(statusCounts).map(([status, count]) => ({
+        status,
+        count,
+      }));
+
+      // 5. Table Turnover View
+      const tableMap: Record<string, { tableId: string; displayName: string; tableNumber: string; orderCount: number; revenue: number; aov: number }> = {};
+      for (const order of currentOrders) {
+        const table = order.tableId as any;
+        const tableIdStr = table ? table._id?.toString() || table.toString() : 'unknown';
+        const displayName = table?.displayName || 'Unknown Table';
+        const tableNumber = table?.tableNumber || 'N/A';
+
+        if (!tableMap[tableIdStr]) {
+          tableMap[tableIdStr] = {
+            tableId: tableIdStr,
+            displayName,
+            tableNumber,
+            orderCount: 0,
+            revenue: 0,
+            aov: 0,
+          };
+        }
+
+        tableMap[tableIdStr].orderCount += 1;
+        if (order.status !== 'CANCELLED') {
+          tableMap[tableIdStr].revenue += order.total;
+        }
+      }
+
+      for (const key of Object.keys(tableMap)) {
+        const t = tableMap[key];
+        t.aov = t.orderCount > 0 ? Math.round(t.revenue / t.orderCount) : 0;
+      }
+
+      const tables = Object.values(tableMap);
+
+      // 6. Orders list for CSV export
+      const ordersList = currentOrders.map((order) => {
+        const table = order.tableId as any;
+        const displayName = table?.displayName || 'Unknown Table';
+        return {
+          orderNumber: order.orderNumber,
+          tableName: displayName,
+          createdAt: order.createdAt,
+          status: order.status,
+          itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+          total: order.total,
+        };
+      });
+
+      const responseData = {
+        summary,
+        charts: {
+          timeline,
+          topSelling,
+          statusBreakdown,
+        },
+        tables,
+        ordersList,
+      };
+
+      sendSuccess(res, responseData, 'Analytics retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
   }
 
   async listOrders(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {

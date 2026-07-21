@@ -332,4 +332,115 @@ describe('Phase 5 Orders & State Machine Integration Tests', () => {
     expect(managerCancel.status).toBe(200);
     expect(managerCancel.body.data.status).toBe('CANCELLED');
   });
+
+  it('should enforce role checks and calculate correct summary metrics for Analytics endpoint', async () => {
+    // 1. Setup users and restaurant
+    const passwordHash = await bcrypt.hash('PixoraDemo123!', 10);
+    const staff = await User.create({
+      email: 'staff_analytics@pixora.dev',
+      passwordHash,
+      role: 'STAFF',
+      name: 'Staff',
+      isActive: true,
+    });
+
+    const manager = await User.create({
+      email: 'manager_analytics@pixora.dev',
+      passwordHash,
+      role: 'MANAGER',
+      name: 'Manager',
+      isActive: true,
+    });
+
+    const restaurant = await Restaurant.create({
+      name: 'Analytics Grill',
+      slug: 'analytics-grill',
+      isActive: true,
+    });
+
+    await RestaurantStaff.create({ userId: staff.id, restaurantId: restaurant.id, role: 'STAFF' });
+    await RestaurantStaff.create({ userId: manager.id, restaurantId: restaurant.id, role: 'MANAGER' });
+
+    const table = await Table.create({
+      restaurantId: restaurant.id,
+      tableNumber: '20',
+      displayName: 'Table 20',
+      token: 'secureToken21CharactersLongTable20',
+      isActive: true,
+      qrCodeUrl: '/api/v1/restaurants/someid/tables/someid/qr',
+    });
+
+    const category = await Category.create({
+      restaurantId: restaurant.id,
+      name: 'Pizzas',
+      isActive: true,
+      sortOrder: 1,
+    });
+
+    const item = await MenuItem.create({
+      restaurantId: restaurant.id,
+      categoryId: category.id,
+      name: 'Paneer Tikka',
+      price: 500,
+      isAvailable: true,
+      sortOrder: 1,
+    });
+
+    // Logins
+    const loginStaff = await request(app).post('/api/v1/auth/login').send({ email: 'staff_analytics@pixora.dev', password: 'PixoraDemo123!' });
+    const staffToken = loginStaff.body.data.accessToken;
+
+    const loginManager = await request(app).post('/api/v1/auth/login').send({ email: 'manager_analytics@pixora.dev', password: 'PixoraDemo123!' });
+    const managerToken = loginManager.body.data.accessToken;
+
+    // Create a served order (to test fulfillmentTime calculation)
+    const order1 = await request(app)
+      .post(`/api/v1/public/restaurants/${restaurant.slug}/tables/${table.token}/orders`)
+      .send({
+        items: [
+          {
+            itemId: item.id,
+            quantity: 2,
+            selectedAddOns: [],
+          },
+        ],
+      });
+    const orderId = order1.body.data._id;
+
+    // Accept, prepare, ready, serve
+    await request(app).patch(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/status`).set('Authorization', `Bearer ${managerToken}`).send({ status: 'ACCEPTED' });
+    await request(app).patch(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/status`).set('Authorization', `Bearer ${managerToken}`).send({ status: 'PREPARING' });
+    await request(app).patch(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/status`).set('Authorization', `Bearer ${managerToken}`).send({ status: 'READY' });
+    await request(app).patch(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/status`).set('Authorization', `Bearer ${managerToken}`).send({ status: 'SERVED' });
+
+    // Define dates for query
+    const now = new Date();
+    const startDate = new Date(now.getTime() - 60000).toISOString(); // 1 minute ago
+    const endDate = new Date(now.getTime() + 60000).toISOString(); // 1 minute later
+
+    // A. STAFF must be blocked from analytics
+    const staffResponse = await request(app)
+      .get(`/api/v1/restaurants/${restaurant.id}/analytics?startDate=${startDate}&endDate=${endDate}`)
+      .set('Authorization', `Bearer ${staffToken}`);
+
+    expect(staffResponse.status).toBe(403);
+    expect(staffResponse.body.success).toBe(false);
+
+    // B. MANAGER must succeed
+    const managerResponse = await request(app)
+      .get(`/api/v1/restaurants/${restaurant.id}/analytics?startDate=${startDate}&endDate=${endDate}`)
+      .set('Authorization', `Bearer ${managerToken}`);
+
+    expect(managerResponse.status).toBe(200);
+    expect(managerResponse.body.success).toBe(true);
+
+    const data = managerResponse.body.data;
+    expect(data.summary.revenue.current).toBe(1000); // 500 * 2 = 1000 cents
+    expect(data.summary.orderCount.current).toBe(1);
+    expect(data.summary.aov.current).toBe(1000);
+    expect(data.summary.fulfillmentTime.current).toBeGreaterThanOrEqual(0);
+    expect(data.charts.statusBreakdown.find((x: any) => x.status === 'SERVED')?.count).toBe(1);
+    expect(data.tables).toHaveLength(1);
+    expect(data.tables[0].displayName).toBe('Table 20');
+  });
 });
