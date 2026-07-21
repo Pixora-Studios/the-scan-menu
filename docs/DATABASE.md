@@ -109,3 +109,47 @@ Represents physical table placements in a restaurant, matching secure, rotate-re
   - Unique index on `token` (Primary table public-facing resolver lookup)
   - Index on `restaurantId`
   - Compound unique index on `restaurantId + tableNumber` (enforces unique table number identifiers inside each restaurant tenant)
+
+---
+
+### 6. Order
+Represents actual self-placed customer dining tickets inside our multi-tenant SaaS.
+
+- **Collection Name:** `orders`
+- **Fields:**
+  - `restaurantId`: `ObjectId` (Required, ref: `'Restaurant'`)
+  - `tableId`: `ObjectId` (Required, ref: `'Table'`)
+  - `orderNumber`: `Number` (Required, sequential per-restaurant integer counter)
+  - `items`: `Array` of Object:
+    - `menuItemId`: `ObjectId` (Required, ref: `'MenuItem'`)
+    - `nameSnapshot`: `String` (Required, snapshots menu item name at order time)
+    - `unitPriceSnapshot`: `Number` (Required, snapshots item unit price including chosen add-ons in cents/paise)
+    - `quantity`: `Number` (Required, minimum: 1)
+    - `selectedAddOns`: `Array` of Object:
+      - `name`: `String`
+      - `priceDelta`: `Number`
+    - `specialInstructions`: `String` (Optional, per-item note)
+  - `subtotal`: `Number` (Required, computed sum in cents/paise)
+  - `tax`: `Number` (Required, calculated tax sum in cents/paise)
+  - `total`: `Number` (Required, grand total sum in cents/paise)
+  - `customerNote`: `String` (Optional, order-level note)
+  - `status`: `String` (Required, enum: `PENDING` | `ACCEPTED` | `PREPARING` | `READY` | `SERVED` | `CANCELLED`, default: `PENDING`)
+  - `source`: `String` (Required, enum: `QR` | `POS` | `API` | `MANUAL`, default: `QR`)
+  - `integrationMetadata`: `Object` (Required, default: `{}`)
+  - `createdAt`: `Date` (Automated timestamp)
+  - `updatedAt`: `Date` (Automated timestamp)
+
+- **Indexes:**
+  - Compound unique index on `restaurantId + orderNumber` (Enforces unique sequential order numbering per restaurant tenant)
+  - Compound index on `restaurantId + status` (Optimizes active kitchen queues querying)
+  - Compound index on `restaurantId + createdAt` (Optimizes history page pagination and reporting queries)
+
+---
+
+### 7. OrderCounter
+A helper atomic sequential index tracker keeping independent sequence series per restaurant.
+
+- **Collection Name:** `order_counters`
+- **Fields:**
+  - `restaurantId`: `ObjectId` (Required, ref: `'Restaurant'`, unique lookup)
+  - `seq`: `Number` (Required, atomic increment counter, default: `0`)

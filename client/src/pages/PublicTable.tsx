@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -21,6 +21,7 @@ import {
 import { publicService, PublicCategory, MenuItem, AddOn } from '../services/restaurant.service';
 import { useCartStore } from '../store/useCartStore';
 import { useToast } from '../hooks/useToast';
+import apiClient from '../lib/api';
 
 // ==========================================
 // HELPERS
@@ -155,6 +156,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
 export const PublicTable: React.FC = () => {
   const { restaurantSlug, tableToken } = useParams<{ restaurantSlug: string; tableToken: string }>();
+  const navigate = useNavigate();
   const { toast } = useToast();
 
   // Zustand Cart Store
@@ -168,6 +170,13 @@ export const PublicTable: React.FC = () => {
   const [isWaiterModalOpen, setIsWaiterModalOpen] = useState(false);
   const [isClearCartModalOpen, setIsClearCartModalOpen] = useState(false);
   const [isCartSheetOpen, setIsCartSheetOpen] = useState(false);
+
+  // Phase 5 Order Placement States
+  const [customerNote, setCustomerNote] = useState('');
+  const [isPlacingOrder, setIsPlacingOrder] = useState(false);
+  const [failedOrderDetails, setFailedOrderDetails] = useState<
+    { menuItemId: string; name: string; reason: 'unavailable' | 'category_inactive' }[]
+  >([]);
 
   // Bottom Sheet States for Item Detail
   const [detailQuantity, setDetailQuantity] = useState(1);
@@ -381,6 +390,53 @@ export const PublicTable: React.FC = () => {
 
     toast(`Added ${selectedItem.name} to cart`, 'success');
     setSelectedItem(null);
+  };
+
+  // Place Order API Call
+  const handlePlaceOrder = async () => {
+    if (cartItems.length === 0) return;
+    setIsPlacingOrder(true);
+    setFailedOrderDetails([]);
+
+    try {
+      const payload = {
+        items: cartItems.map((item) => ({
+          itemId: item.itemId,
+          quantity: item.quantity,
+          selectedAddOns: item.selectedAddOns.map((addon) => ({
+            name: addon.name,
+            priceDelta: addon.priceDelta,
+          })),
+          specialInstructions: item.specialInstructions || '',
+        })),
+        customerNote: customerNote.trim() || undefined,
+      };
+
+      const res = await apiClient.post(
+        `/public/restaurants/${restaurantSlug}/tables/${tableToken}/orders`,
+        payload
+      );
+
+      if (res.data.success) {
+        toast('Order placed successfully!', 'success');
+        clearCart();
+        setIsCartSheetOpen(false);
+        setCustomerNote('');
+        navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${res.data.data._id}`);
+      }
+    } catch (err: any) {
+      console.error('Order placement error:', err);
+      const errResponse = err.response?.data?.error;
+      if (errResponse && errResponse.code === 'ITEMS_UNAVAILABLE') {
+        const failed = errResponse.details || [];
+        setFailedOrderDetails(failed);
+        toast('Some items in your basket are no longer available. Please review.', 'error');
+      } else {
+        toast(errResponse?.message || 'Failed to place order. Please try again.', 'error');
+      }
+    } finally {
+      setIsPlacingOrder(false);
+    }
   };
 
   // Call Waiter confirm
@@ -926,72 +982,101 @@ export const PublicTable: React.FC = () => {
 
                   {/* Line Items List */}
                   <div className="divide-y divide-slate-100 space-y-3">
-                    {cartItems.map((item, idx) => (
-                      <div key={idx} className="flex gap-4 py-3 first:pt-0">
-                        <div className="flex-1 space-y-1">
-                          <h4 className="text-sm font-bold text-slate-900 leading-snug">
-                            {item.name}
-                          </h4>
-                          {item.selectedAddOns.length > 0 && (
-                            <p className="text-[11px] text-slate-500">
-                              + {item.selectedAddOns.map((x) => x.name).join(', ')}
-                            </p>
-                          )}
-                          {item.specialInstructions && (
-                            <p className="text-[11px] text-amber-600 bg-amber-50/50 rounded-lg px-2 py-1 inline-block italic font-medium">
-                              Note: "{item.specialInstructions}"
-                            </p>
-                          )}
-                          <p className="text-xs font-bold text-slate-800">
-                            {formatPrice(item.price, currency)} each
-                          </p>
-                        </div>
+                    {cartItems.map((item, idx) => {
+                      const failedCheck = failedOrderDetails.find((f) => f.menuItemId === item.itemId);
+                      const isFailed = !!failedCheck;
 
-                        {/* Quantity Counter & Line total */}
-                        <div className="flex flex-col items-end justify-between shrink-0">
-                          <span className="text-sm font-black text-slate-900 font-mono">
-                            {formatPrice(item.price * item.quantity, currency)}
-                          </span>
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex gap-4 py-3 first:pt-0 rounded-xl transition-all ${
+                            isFailed ? 'bg-red-50/50 p-3 border border-red-200/50' : ''
+                          }`}
+                        >
+                          <div className="flex-1 space-y-1">
+                            <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                              {item.name}
+                            </h4>
+                            {item.selectedAddOns.length > 0 && (
+                              <p className="text-[11px] text-slate-500">
+                                + {item.selectedAddOns.map((x) => x.name).join(', ')}
+                              </p>
+                            )}
+                            {item.specialInstructions && (
+                              <p className="text-[11px] text-amber-600 bg-amber-50/50 rounded-lg px-2 py-1 inline-block italic font-medium">
+                                Note: "{item.specialInstructions}"
+                              </p>
+                            )}
+                            {isFailed && (
+                              <p className="text-[11px] font-bold text-red-600 mt-1">
+                                ⚠️ This item is no longer available. Please remove to place order.
+                              </p>
+                            )}
+                            <p className="text-xs font-bold text-slate-800">
+                              {formatPrice(item.price, currency)} each
+                            </p>
+                          </div>
 
-                          <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 p-0.5 mt-2">
-                            <button
-                              onClick={() =>
-                                updateQuantity(
-                                  item.itemId,
-                                  item.selectedAddOns,
-                                  item.specialInstructions || '',
-                                  -1
-                                )
-                              }
-                              className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
-                            >
-                              <Minus className="w-3.5 h-3.5" strokeWidth={2} />
-                            </button>
-                            <span className="px-2 font-bold text-slate-900 text-xs font-mono w-6 text-center">
-                              {item.quantity}
+                          {/* Quantity Counter & Line total */}
+                          <div className="flex flex-col items-end justify-between shrink-0">
+                            <span className="text-sm font-black text-slate-900 font-mono">
+                              {formatPrice(item.price * item.quantity, currency)}
                             </span>
-                            <button
-                              onClick={() =>
-                                updateQuantity(
-                                  item.itemId,
-                                  item.selectedAddOns,
-                                  item.specialInstructions || '',
-                                  1
-                                )
-                              }
-                              className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
-                            >
-                              <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                            </button>
+
+                            <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 p-0.5 mt-2">
+                              <button
+                                onClick={() =>
+                                  updateQuantity(
+                                    item.itemId,
+                                    item.selectedAddOns,
+                                    item.specialInstructions || '',
+                                    -1
+                                  )
+                                }
+                                className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
+                              >
+                                <Minus className="w-3.5 h-3.5" strokeWidth={2} />
+                              </button>
+                              <span className="px-2 font-bold text-slate-900 text-xs font-mono w-6 text-center">
+                                {item.quantity}
+                              </span>
+                              <button
+                                onClick={() =>
+                                  updateQuantity(
+                                    item.itemId,
+                                    item.selectedAddOns,
+                                    item.specialInstructions || '',
+                                    1
+                                  )
+                                }
+                                className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
+                              >
+                                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                              </button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* Subtotal & Call To Action */}
                 <div className="border-t border-slate-100 pt-5 space-y-4">
+                  {/* Customer Order Note */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-950 uppercase tracking-wide">
+                      Add a note for the kitchen
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="E.g., Please make everything extra hot, bring extra napkins..."
+                      value={customerNote}
+                      onChange={(e) => setCustomerNote(e.target.value)}
+                      className="w-full p-3 border border-slate-150 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/30 focus:border-[var(--theme-accent)] text-xs placeholder:text-slate-400"
+                    />
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <span className="text-slate-500 font-medium text-sm">Basket Subtotal</span>
                     <span className="text-xl font-black text-slate-900 font-mono">
@@ -1002,17 +1087,23 @@ export const PublicTable: React.FC = () => {
                   <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-100 flex items-start gap-2.5">
                     <Sparkles className="w-5 h-5 text-[var(--theme-accent)] shrink-0 mt-0.5" strokeWidth={1.75} />
                     <p className="text-[11px] text-slate-500 leading-relaxed">
-                      This is a preview of your order. Once you are ready, you can submit this to our kitchen in the next phase!
+                      Confirming will instantly submit your order directly to the kitchen staff.
                     </p>
                   </div>
 
                   <button
-                    onClick={() => {
-                      toast('Order submission coming soon in Phase 5!', 'info');
-                    }}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-sm tracking-wide transition-all shadow-md active:scale-[0.99]"
+                    onClick={handlePlaceOrder}
+                    disabled={isPlacingOrder || cartItems.length === 0}
+                    className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-400 text-white py-4 rounded-xl font-bold text-sm tracking-wide transition-all shadow-md active:scale-[0.99] flex items-center justify-center gap-2"
                   >
-                    Proceed to Checkout
+                    {isPlacingOrder ? (
+                      <>
+                        <Loader className="w-4 h-4 animate-spin" />
+                        Placing Order...
+                      </>
+                    ) : (
+                      'Place Order'
+                    )}
                   </button>
                 </div>
               </div>

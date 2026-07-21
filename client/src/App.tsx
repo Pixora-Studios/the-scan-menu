@@ -8,6 +8,8 @@ import AdminRestaurants from './pages/AdminRestaurants';
 import ManagerTables from './pages/ManagerTables';
 import ManagerMenu from './pages/ManagerMenu';
 import PublicTable from './pages/PublicTable';
+import PublicOrderConfirmation from './pages/PublicOrderConfirmation';
+import ManagerOrders from './pages/ManagerOrders';
 
 export const App = () => {
   return (
@@ -17,6 +19,7 @@ export const App = () => {
           <Routes>
           {/* Public customer dining view */}
           <Route path="/r/:restaurantSlug/t/:tableToken" element={<PublicTable />} />
+          <Route path="/r/:restaurantSlug/t/:tableToken/order/:orderId" element={<PublicOrderConfirmation />} />
 
           {/* Public login */}
           <Route path="/login" element={<Login />} />
@@ -29,6 +32,11 @@ export const App = () => {
           {/* Super Admin only routes */}
           <Route element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']} />}>
             <Route path="/admin/restaurants" element={<AdminRestaurants />} />
+          </Route>
+
+          {/* Manager/Staff/Super Admin routes */}
+          <Route element={<ProtectedRoute allowedRoles={['MANAGER', 'STAFF', 'SUPER_ADMIN']} />}>
+            <Route path="/manager/orders" element={<ManagerOrders />} />
           </Route>
 
           {/* Manager/Super Admin only routes */}
