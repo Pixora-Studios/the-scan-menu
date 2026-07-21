@@ -28,8 +28,14 @@ import {
   X,
   Shield,
   HelpCircle,
+  BookOpen,
+  TableProperties,
+  Settings,
 } from 'lucide-react';
 import apiClient from '../lib/api';
+import { ManagerMenu } from './ManagerMenu';
+import { ManagerTables } from './ManagerTables';
+import { ManagerSettings } from './ManagerSettings';
 
 interface OrderItem {
   nameSnapshot: string;
@@ -84,8 +90,8 @@ export const ManagerOrders: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Primary navigation tab
-  const [activeTab, setActiveTab] = useState<'orders' | 'waiter-calls' | 'profile'>('orders');
+  // Primary navigation tab (extended for Phase 9)
+  const [activeTab, setActiveTab] = useState<'orders' | 'waiter-calls' | 'menu' | 'tables' | 'settings' | 'profile'>('orders');
 
   // Mobile sub-status tab switcher state
   const [mobileStatusTab, setMobileStatusTab] = useState<'PENDING' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'SERVED'>('PENDING');
@@ -112,6 +118,13 @@ export const ManagerOrders: React.FC = () => {
 
   const activeRestaurantId = user?.restaurants?.[0];
   const isStaff = user?.role === 'STAFF';
+
+  // State-level role protection: Redirect staff away from admin sections
+  useEffect(() => {
+    if (isStaff && (activeTab === 'menu' || activeTab === 'tables' || activeTab === 'settings')) {
+      setActiveTab('orders');
+    }
+  }, [activeTab, isStaff]);
 
   // Fetch Live socket status
   const token = localStorage.getItem('accessToken');
@@ -618,6 +631,51 @@ export const ManagerOrders: React.FC = () => {
             )}
           </button>
 
+          {/* Menu tab (Manager/Super Admin only) */}
+          {!isStaff && (
+            <button
+              onClick={() => setActiveTab('menu')}
+              className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+                activeTab === 'menu'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" strokeWidth={1.75} />
+              <span>Menu Management</span>
+            </button>
+          )}
+
+          {/* Tables tab (Manager/Super Admin only) */}
+          {!isStaff && (
+            <button
+              onClick={() => setActiveTab('tables')}
+              className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+                activeTab === 'tables'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <TableProperties className="w-4 h-4" strokeWidth={1.75} />
+              <span>Tables</span>
+            </button>
+          )}
+
+          {/* Settings tab (Manager/Super Admin only) */}
+          {!isStaff && (
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+                activeTab === 'settings'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <Settings className="w-4 h-4" strokeWidth={1.75} />
+              <span>Settings</span>
+            </button>
+          )}
+
           {/* Profile tab */}
           <button
             onClick={() => setActiveTab('profile')}
@@ -980,6 +1038,48 @@ export const ManagerOrders: React.FC = () => {
               </motion.div>
             )}
 
+            {/* ==================== MENU VIEW ==================== */}
+            {activeTab === 'menu' && !isStaff && (
+              <motion.div
+                key="menu-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25 }}
+                className="h-full overflow-y-auto"
+              >
+                <ManagerMenu />
+              </motion.div>
+            )}
+
+            {/* ==================== TABLES VIEW ==================== */}
+            {activeTab === 'tables' && !isStaff && (
+              <motion.div
+                key="tables-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25 }}
+                className="h-full overflow-y-auto"
+              >
+                <ManagerTables />
+              </motion.div>
+            )}
+
+            {/* ==================== SETTINGS VIEW ==================== */}
+            {activeTab === 'settings' && !isStaff && (
+              <motion.div
+                key="settings-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25 }}
+                className="h-full overflow-y-auto"
+              >
+                <ManagerSettings />
+              </motion.div>
+            )}
+
             {/* ==================== PROFILE VIEW ==================== */}
             {activeTab === 'profile' && (
               <motion.div
@@ -1108,6 +1208,45 @@ export const ManagerOrders: React.FC = () => {
             </span>
           )}
         </button>
+
+        {/* Menu (Manager only) */}
+        {!isStaff && (
+          <button
+            onClick={() => setActiveTab('menu')}
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+              activeTab === 'menu' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
+            }`}
+          >
+            <BookOpen className="w-5 h-5" strokeWidth={1.75} />
+            <span className="text-[9px] leading-none">Menu</span>
+          </button>
+        )}
+
+        {/* Tables (Manager only) */}
+        {!isStaff && (
+          <button
+            onClick={() => setActiveTab('tables')}
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+              activeTab === 'tables' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
+            }`}
+          >
+            <TableProperties className="w-5 h-5" strokeWidth={1.75} />
+            <span className="text-[9px] leading-none">Tables</span>
+          </button>
+        )}
+
+        {/* Settings (Manager only) */}
+        {!isStaff && (
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+              activeTab === 'settings' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
+            }`}
+          >
+            <Settings className="w-5 h-5" strokeWidth={1.75} />
+            <span className="text-[9px] leading-none">Settings</span>
+          </button>
+        )}
 
         {/* Profile */}
         <button
