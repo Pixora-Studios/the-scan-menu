@@ -143,3 +143,55 @@ Changes password for the currently logged-in user.
 - **Error Responses:**
   - `400 Bad Request` (Invalid criteria or format)
   - `401 Unauthorized` (Invalid current password or token expired)
+
+---
+
+### 6. Get Restaurant Analytics
+Fetches aggregate analytics and metrics for managers.
+
+- **Method:** `GET`
+- **Path:** `/api/v1/restaurants/:restaurantId/analytics`
+- **Request Headers:**
+  - `Authorization`: `Bearer <accessToken>`
+- **Query Parameters:**
+  - `startDate`: ISO datetime string of the current period start
+  - `endDate`: ISO datetime string of the current period end
+  - `priorStartDate`: ISO datetime string of the prior period start (optional)
+  - `priorEndDate`: ISO datetime string of the prior period end (optional)
+- **Role Permissions:** `MANAGER` or `SUPER_ADMIN`
+- **Success Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "summary": {
+        "revenue": { "current": 24000, "prior": 12000, "change": 100 },
+        "orderCount": { "current": 10, "prior": 5, "change": 100 },
+        "aov": { "current": 2400, "prior": 2400, "change": 0 },
+        "fulfillmentTime": { "current": 15.5, "prior": 18.2, "change": -14.84 }
+      },
+      "charts": {
+        "timeline": [
+          { "label": "2026-07-21", "revenue": 24000, "orderCount": 10 }
+        ],
+        "topSelling": [
+          { "name": "Margherita", "quantity": 12, "revenue": 12000 }
+        ],
+        "statusBreakdown": [
+          { "status": "PENDING", "count": 2 }
+        ]
+      },
+      "tables": [
+        { "tableId": "60d0fe...", "displayName": "Table 1", "tableNumber": "1", "orderCount": 5, "revenue": 12000, "aov": 2400 }
+      ],
+      "ordersList": [
+        { "orderNumber": 1, "tableName": "Table 1", "createdAt": "2026-07-21T10:00:00.000Z", "status": "SERVED", "itemCount": 2, "total": 2400 }
+      ]
+    },
+    "message": "Analytics retrieved successfully"
+  }
+  ```
+- **Error Responses:**
+  - `400 Bad Request` (Missing/invalid query parameter dates)
+  - `401 Unauthorized` (Invalid/expired token)
+  - `403 Forbidden` (User does not have access to restaurant or lacks MANAGER/SUPER_ADMIN role)

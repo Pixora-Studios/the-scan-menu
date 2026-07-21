@@ -4,6 +4,7 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import { apiClient } from '../lib/api';
 import { ImageUploader } from '../components/ImageUploader';
 import {
@@ -83,6 +84,7 @@ const SortableItem: React.FC<SortableItemProps> = ({ id, children }) => {
 
 export const ManagerMenu: React.FC = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [selectedCatId, setSelectedCatId] = useState<string | null>(null);
   const [isCatOpen, setIsCatOpen] = useState(false);
@@ -142,6 +144,7 @@ export const ManagerMenu: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['categories', activeRestaurantId] });
       setIsCatOpen(false);
       catForm.reset();
+      toast('Category created successfully.', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error creating category');
@@ -156,6 +159,7 @@ export const ManagerMenu: React.FC = () => {
       setIsCatOpen(false);
       setEditingCat(null);
       catForm.reset();
+      toast('Category updated successfully.', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error editing category');
@@ -168,9 +172,10 @@ export const ManagerMenu: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['categories', activeRestaurantId] });
       setSelectedCatId(null);
+      toast('Category deleted successfully.', 'success');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.error?.message || 'Error deleting category');
+      toast(err.response?.data?.error?.message || 'Error deleting category', 'error');
     },
   });
 
@@ -217,6 +222,7 @@ export const ManagerMenu: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['menuItems', activeRestaurantId, selectedCatId] });
       setIsItemOpen(false);
       itemForm.reset();
+      toast('Menu item created successfully.', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error creating menu item');
@@ -231,6 +237,7 @@ export const ManagerMenu: React.FC = () => {
       setIsItemOpen(false);
       setEditingItem(null);
       itemForm.reset();
+      toast('Menu item updated successfully.', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error editing menu item');
@@ -240,8 +247,13 @@ export const ManagerMenu: React.FC = () => {
   const deleteItemMutation = useMutation({
     mutationFn: (id: string) =>
       apiClient.delete(`/restaurants/${activeRestaurantId}/menu-items/${id}`),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['menuItems', activeRestaurantId, selectedCatId] });
+      if (res.data?.data?.archived) {
+        toast('Menu item has order history; successfully soft-archived and made unavailable.', 'info');
+      } else {
+        toast('Menu item successfully deleted.', 'success');
+      }
     },
   });
 
@@ -443,7 +455,7 @@ export const ManagerMenu: React.FC = () => {
         <div className="md:col-span-1 space-y-4">
           <div className="flex justify-between items-center bg-slate-50/50 p-2.5 rounded-xl border border-slate-100">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <FolderOpen className="w-4 h-4 text-amber-500" />
+              <FolderOpen className="w-4 h-4 text-amber-500" strokeWidth={1.75} />
               <span>Categories</span>
             </h2>
             <button
@@ -454,7 +466,7 @@ export const ManagerMenu: React.FC = () => {
               }}
               className="p-1.5 bg-primary text-white hover:bg-slate-800 rounded-lg transition"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5" strokeWidth={1.75} />
             </button>
           </div>
 
@@ -481,7 +493,7 @@ export const ManagerMenu: React.FC = () => {
                         >
                           <div className="flex items-center gap-2 truncate">
                             <span {...dragHandleProps} className="cursor-grab text-slate-300 hover:text-slate-600 p-0.5">
-                              <GripVertical className="w-3.5 h-3.5" />
+                              <GripVertical className="w-3.5 h-3.5" strokeWidth={1.75} />
                             </span>
                             <span className="truncate">{cat.name}</span>
                           </div>
@@ -490,7 +502,7 @@ export const ManagerMenu: React.FC = () => {
                               onClick={(e) => handleEditCatClick(cat, e)}
                               className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-700 transition"
                             >
-                              <Edit2 className="w-3 h-3" />
+                              <Edit2 className="w-3 h-3" strokeWidth={1.75} />
                             </button>
                             <button
                               onClick={(e) => {
@@ -505,7 +517,7 @@ export const ManagerMenu: React.FC = () => {
                               }}
                               className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition"
                             >
-                              <Trash2 className="w-3 h-3" />
+                              <Trash2 className="w-3 h-3" strokeWidth={1.75} />
                             </button>
                           </div>
                         </div>
@@ -566,7 +578,7 @@ export const ManagerMenu: React.FC = () => {
                 }}
                 className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-800 transition disabled:opacity-50"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" strokeWidth={1.75} />
                 <span>Add Item</span>
               </button>
             </div>
@@ -601,7 +613,7 @@ export const ManagerMenu: React.FC = () => {
             </div>
           ) : menuItems.length === 0 ? (
             <div className="text-center py-20 bg-slate-50/50 rounded-2xl border border-slate-100 space-y-3">
-              <FolderOpen className="w-10 h-10 text-slate-300 mx-auto animate-pulse" />
+              <FolderOpen className="w-10 h-10 text-slate-300 mx-auto animate-pulse" strokeWidth={1.75} />
               <div className="space-y-1">
                 <h4 className="font-bold text-slate-700">Category is Empty</h4>
                 <p className="text-xs text-slate-400">Click "Add Item" above to add the first menu item.</p>
@@ -635,7 +647,7 @@ export const ManagerMenu: React.FC = () => {
                           )}
 
                           <div className="flex flex-col justify-center select-none shrink-0" {...dragHandleProps}>
-                            <GripVertical className="w-4 h-4 text-slate-300 hover:text-slate-600 cursor-grab" />
+                            <GripVertical className="w-4 h-4 text-slate-300 hover:text-slate-600 cursor-grab" strokeWidth={1.75} />
                           </div>
 
                           {item.imageUrl && (
@@ -651,8 +663,8 @@ export const ManagerMenu: React.FC = () => {
                               <div className="flex justify-between items-start">
                                 <h4 className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                                   <span>{item.name}</span>
-                                  {item.isVegetarian && <Leaf className="w-3.5 h-3.5 text-green-500 shrink-0" />}
-                                  {item.isSpicy && <Flame className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+                                  {item.isVegetarian && <Leaf className="w-3.5 h-3.5 text-green-500 shrink-0" strokeWidth={1.75} />}
+                                  {item.isSpicy && <Flame className="w-3.5 h-3.5 text-red-500 shrink-0" strokeWidth={1.75} />}
                                 </h4>
                                 <span className="font-mono font-bold text-slate-800 text-sm">
                                   {(item.price / 100).toFixed(2)}
@@ -689,7 +701,7 @@ export const ManagerMenu: React.FC = () => {
                                   }}
                                   className="p-1 hover:bg-slate-50 rounded text-slate-400 hover:text-slate-700 transition"
                                 >
-                                  <Edit2 className="w-3.5 h-3.5" />
+                                  <Edit2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                                 </button>
                                 <button
                                   onClick={(e) => {
@@ -700,7 +712,7 @@ export const ManagerMenu: React.FC = () => {
                                   }}
                                   className="p-1 hover:bg-red-50 rounded text-slate-400 hover:text-red-600 transition"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
                                 </button>
                               </div>
                             </div>
@@ -725,7 +737,7 @@ export const ManagerMenu: React.FC = () => {
                 {editingCat ? 'Edit Category' : 'New Category'}
               </h2>
               <button onClick={() => setIsCatOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" strokeWidth={1.75} />
               </button>
             </div>
 
@@ -796,7 +808,7 @@ export const ManagerMenu: React.FC = () => {
                 {editingItem ? 'Edit Menu Item' : 'New Menu Item'}
               </h2>
               <button onClick={() => setIsItemOpen(false)} className="text-slate-400 hover:text-slate-600 p-1">
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" strokeWidth={1.75} />
               </button>
             </div>
 
@@ -853,7 +865,7 @@ export const ManagerMenu: React.FC = () => {
                 <div className="flex items-center gap-2 py-2">
                   <input type="checkbox" id="veg" {...itemForm.register('isVegetarian')} className="rounded text-amber-500" />
                   <label htmlFor="veg" className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                    <Leaf className="w-3.5 h-3.5 text-green-500" />
+                    <Leaf className="w-3.5 h-3.5 text-green-500" strokeWidth={1.75} />
                     <span>Vegetarian</span>
                   </label>
                 </div>
@@ -861,7 +873,7 @@ export const ManagerMenu: React.FC = () => {
                 <div className="flex items-center gap-2 py-2">
                   <input type="checkbox" id="spicy" {...itemForm.register('isSpicy')} className="rounded text-amber-500" />
                   <label htmlFor="spicy" className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                    <Flame className="w-3.5 h-3.5 text-red-500" />
+                    <Flame className="w-3.5 h-3.5 text-red-500" strokeWidth={1.75} />
                     <span>Spicy</span>
                   </label>
                 </div>
@@ -895,7 +907,7 @@ export const ManagerMenu: React.FC = () => {
                     onClick={() => appendAddOn({ name: '', priceDelta: 0 })}
                     className="text-[11px] font-bold text-amber-600 hover:underline flex items-center gap-1"
                   >
-                    <Plus className="w-3 h-3" />
+                    <Plus className="w-3 h-3" strokeWidth={1.75} />
                     <span>Add Add-On Row</span>
                   </button>
                 </div>
@@ -920,7 +932,7 @@ export const ManagerMenu: React.FC = () => {
                       onClick={() => removeAddOn(index)}
                       className="text-red-500 hover:text-red-700 p-1 hover:bg-red-50 rounded"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-4 h-4" strokeWidth={1.75} />
                     </button>
                   </div>
                 ))}

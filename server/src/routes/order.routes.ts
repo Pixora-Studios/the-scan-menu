@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { OrderController } from '../controllers/order.controller';
-import { requireAuth, requireRestaurantAccess } from '../middleware/auth';
+import { requireAuth, requireRestaurantAccess, requireRole } from '../middleware/auth';
 
 const router = Router({ mergeParams: true });
 const orderController = new OrderController();
@@ -9,6 +9,7 @@ const orderController = new OrderController();
 router.use(requireAuth as any);
 
 // Scoped inside a restaurantId parameter
+router.get('/:restaurantId/analytics', requireRestaurantAccess as any, requireRole('MANAGER', 'SUPER_ADMIN') as any, orderController.getAnalytics);
 router.get('/:restaurantId/orders', requireRestaurantAccess as any, orderController.listOrders);
 router.get('/:restaurantId/orders/active', requireRestaurantAccess as any, orderController.listActiveOrders);
 router.get('/:restaurantId/orders/:orderId', requireRestaurantAccess as any, orderController.getOrderDetails);
