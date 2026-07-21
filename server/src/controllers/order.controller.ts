@@ -13,6 +13,158 @@ export class OrderController {
     this.getOrderDetails = this.getOrderDetails.bind(this);
     this.updateOrderStatus = this.updateOrderStatus.bind(this);
     this.cancelOrder = this.cancelOrder.bind(this);
+    this.getAnalytics = this.getAnalytics.bind(this);
+  }
+
+  async getAnalytics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId } = req.params;
+
+      const start = req.query.startDate ? new Date(req.query.startDate as string) : new Date(new Date().setHours(0,0,0,0));
+      const end = req.query.endDate ? new Date(req.query.endDate as string) : new Date(new Date().setHours(23,59,59,999));
+
+      const durationMs = end.getTime() - start.getTime();
+      const priorStart = new Date(start.getTime() - durationMs);
+      const priorEnd = new Date(start.getTime() - 1);
+
+      const rId = new mongoose.Types.ObjectId(restaurantId);
+
+      // Helper function to get summary metrics
+      const getSummaryMetrics = async (rangeStart: Date, rangeEnd: Date) => {
+        const stats = await Order.aggregate([
+          { $match: { restaurantId: rId, status: { $ne: 'CANCELLED' }, createdAt: { $gte: rangeStart, $lte: rangeEnd } } },
+          { $group: {
+              _id: null,
+              revenue: { $sum: "$total" },
+              orderCount: { $sum: 1 }
+            }
+          }
+        ]);
+
+        const fulfillment = await Order.aggregate([
+          { $match: { restaurantId: rId, status: 'SERVED', createdAt: { $gte: rangeStart, $lte: rangeEnd } } },
+          { $project: { durationMs: { $subtract: ["$updatedAt", "$createdAt"] } } },
+          { $group: { _id: null, avgFulfillmentMs: { $avg: "$durationMs" } } }
+        ]);
+
+        const revenue = stats[0]?.revenue || 0;
+        const orderCount = stats[0]?.orderCount || 0;
+        const averageOrderValue = orderCount > 0 ? Math.round(revenue / orderCount) : 0;
+        const avgFulfillmentTimeMinutes = fulfillment[0]?.avgFulfillmentMs
+          ? Math.round(fulfillment[0].avgFulfillmentMs / 60000 * 10) / 10
+          : 0;
+
+        return { revenue, orderCount, averageOrderValue, avgFulfillmentTimeMinutes };
+      };
+
+      const currentMetrics = await getSummaryMetrics(start, end);
+      const priorMetrics = await getSummaryMetrics(priorStart, priorEnd);
+
+      // Time-series Chart bucketing
+      const isSingleDay = durationMs <= 28 * 60 * 60 * 1000;
+      const dateFormat = isSingleDay ? "%H:00" : "%Y-%m-%d";
+
+      const timeSeriesData = await Order.aggregate([
+        { $match: { restaurantId: rId, status: { $ne: 'CANCELLED' }, createdAt: { $gte: start, $lte: end } } },
+        { $group: {
+            _id: { $dateToString: { format: dateFormat, date: "$createdAt", timezone: "Asia/Kolkata" } },
+            revenue: { $sum: "$total" },
+            orders: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      const formattedTimeSeries = timeSeriesData.map(item => ({
+        label: item._id,
+        revenue: item.revenue,
+        orders: item.orders
+      }));
+
+      // Top Selling Menu Items
+      const topItems = await Order.aggregate([
+        { $match: { restaurantId: rId, status: { $ne: 'CANCELLED' }, createdAt: { $gte: start, $lte: end } } },
+        { $unwind: "$items" },
+        { $group: {
+            _id: "$items.nameSnapshot",
+            name: { $first: "$items.nameSnapshot" },
+            quantity: { $sum: "$items.quantity" },
+            revenue: { $sum: { $multiply: ["$items.unitPriceSnapshot", "$items.quantity"] } }
+          }
+        },
+        { $sort: { quantity: -1 } },
+        { $limit: 10 }
+      ]);
+
+      // Order status count distribution
+      const statusCounts = await Order.aggregate([
+        { $match: { restaurantId: rId, createdAt: { $gte: start, $lte: end } } },
+        { $group: { _id: "$status", count: { $sum: 1 } } }
+      ]);
+
+      const statusMap: Record<string, number> = {
+        PENDING: 0, ACCEPTED: 0, PREPARING: 0, READY: 0, SERVED: 0, CANCELLED: 0
+      };
+      statusCounts.forEach(item => {
+        if (item._id in statusMap) {
+          statusMap[item._id] = item.count;
+        }
+      });
+
+      // Table Turnover
+      const tableTurnoverRaw = await Order.aggregate([
+        { $match: { restaurantId: rId, status: { $ne: 'CANCELLED' }, createdAt: { $gte: start, $lte: end } } },
+        { $group: {
+            _id: "$tableId",
+            orderCount: { $sum: 1 },
+            revenue: { $sum: "$total" }
+          }
+        },
+        { $lookup: { from: "tables", localField: "_id", foreignField: "_id", as: "tableInfo" } },
+        { $unwind: { path: "$tableInfo", preserveNullAndEmptyArrays: true } },
+        { $project: {
+            tableNumber: { $ifNull: ["$tableInfo.tableNumber", "Unknown"] },
+            displayName: { $ifNull: ["$tableInfo.displayName", "Unknown Table"] },
+            orderCount: 1,
+            revenue: 1,
+            averageOrderValue: { $cond: [{ $gt: ["$orderCount", 0] }, { $round: [{ $divide: ["$revenue", "$orderCount"] }] }, 0] }
+          }
+        },
+        { $sort: { revenue: -1 } }
+      ]);
+
+      // Raw orders populated with table name for CSV download
+      const rawOrders = await Order.find({ restaurantId: rId, createdAt: { $gte: start, $lte: end } })
+        .sort({ createdAt: -1 })
+        .populate('tableId', 'displayName tableNumber');
+
+      const csvData = rawOrders.map(order => ({
+        orderNumber: order.orderNumber,
+        tableName: (order.tableId as any)?.displayName || 'Unknown',
+        createdAt: order.createdAt,
+        status: order.status,
+        itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+        total: order.total
+      }));
+
+      const analyticsData = {
+        summary: {
+          current: currentMetrics,
+          prior: priorMetrics
+        },
+        charts: {
+          timeSeries: formattedTimeSeries,
+          topSellingItems: topItems,
+          orderStatusDistribution: statusMap
+        },
+        tablesTurnover: tableTurnoverRaw,
+        rawOrdersForCsv: csvData
+      };
+
+      sendSuccess(res, analyticsData, 'Analytics retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
   }
 
   async listOrders(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {

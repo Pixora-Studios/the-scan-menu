@@ -32,10 +32,12 @@ import {
   TableProperties,
   Settings,
 } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import apiClient from '../lib/api';
 import { ManagerMenu } from './ManagerMenu';
 import { ManagerTables } from './ManagerTables';
 import { ManagerSettings } from './ManagerSettings';
+import { ManagerAnalytics } from './ManagerAnalytics';
 
 interface OrderItem {
   nameSnapshot: string;
@@ -90,8 +92,8 @@ export const ManagerOrders: React.FC = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Primary navigation tab (extended for Phase 9)
-  const [activeTab, setActiveTab] = useState<'orders' | 'waiter-calls' | 'menu' | 'tables' | 'settings' | 'profile'>('orders');
+  // Primary navigation tab (extended for Phase 10)
+  const [activeTab, setActiveTab] = useState<'orders' | 'waiter-calls' | 'menu' | 'tables' | 'settings' | 'analytics' | 'profile'>('orders');
 
   // Mobile sub-status tab switcher state
   const [mobileStatusTab, setMobileStatusTab] = useState<'PENDING' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'SERVED'>('PENDING');
@@ -121,7 +123,7 @@ export const ManagerOrders: React.FC = () => {
 
   // State-level role protection: Redirect staff away from admin sections
   useEffect(() => {
-    if (isStaff && (activeTab === 'menu' || activeTab === 'tables' || activeTab === 'settings')) {
+    if (isStaff && (activeTab === 'menu' || activeTab === 'tables' || activeTab === 'settings' || activeTab === 'analytics')) {
       setActiveTab('orders');
     }
   }, [activeTab, isStaff]);
@@ -676,6 +678,21 @@ export const ManagerOrders: React.FC = () => {
             </button>
           )}
 
+          {/* Analytics tab (Manager/Super Admin only) */}
+          {!isStaff && (
+            <button
+              onClick={() => setActiveTab('analytics')}
+              className={`flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm font-bold transition-all ${
+                activeTab === 'analytics'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" strokeWidth={1.75} />
+              <span>Analytics & Insights</span>
+            </button>
+          )}
+
           {/* Profile tab */}
           <button
             onClick={() => setActiveTab('profile')}
@@ -1080,6 +1097,20 @@ export const ManagerOrders: React.FC = () => {
               </motion.div>
             )}
 
+            {/* ==================== ANALYTICS VIEW ==================== */}
+            {activeTab === 'analytics' && !isStaff && (
+              <motion.div
+                key="analytics-view"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                transition={{ duration: 0.25 }}
+                className="h-full overflow-hidden"
+              >
+                <ManagerAnalytics />
+              </motion.div>
+            )}
+
             {/* ==================== PROFILE VIEW ==================== */}
             {activeTab === 'profile' && (
               <motion.div
@@ -1245,6 +1276,19 @@ export const ManagerOrders: React.FC = () => {
           >
             <Settings className="w-5 h-5" strokeWidth={1.75} />
             <span className="text-[9px] leading-none">Settings</span>
+          </button>
+        )}
+
+        {/* Analytics (Manager only) */}
+        {!isStaff && (
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+              activeTab === 'analytics' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
+            }`}
+          >
+            <BarChart3 className="w-5 h-5" strokeWidth={1.75} />
+            <span className="text-[9px] leading-none">Analytics</span>
           </button>
         )}
 

@@ -332,4 +332,57 @@ describe('Phase 5 Orders & State Machine Integration Tests', () => {
     expect(managerCancel.status).toBe(200);
     expect(managerCancel.body.data.status).toBe('CANCELLED');
   });
+
+  it('should restrict Analytics route to MANAGER/SUPER_ADMIN and calculate correct summary metrics', async () => {
+    // 1. Setup users
+    const passwordHash = await bcrypt.hash('PixoraDemo123!', 10);
+    const staff = await User.create({
+      email: 'staff_analytics@pixora.dev',
+      passwordHash,
+      role: 'STAFF',
+      name: 'Staff',
+      isActive: true,
+    });
+
+    const manager = await User.create({
+      email: 'manager_analytics@pixora.dev',
+      passwordHash,
+      role: 'MANAGER',
+      name: 'Manager',
+      isActive: true,
+    });
+
+    const restaurant = await Restaurant.create({
+      name: 'Analytics Grill',
+      slug: 'analytics-grill',
+      isActive: true,
+    });
+
+    await RestaurantStaff.create({ userId: staff.id, restaurantId: restaurant.id, role: 'STAFF' });
+    await RestaurantStaff.create({ userId: manager.id, restaurantId: restaurant.id, role: 'MANAGER' });
+
+    // Logins
+    const loginStaff = await request(app).post('/api/v1/auth/login').send({ email: 'staff_analytics@pixora.dev', password: 'PixoraDemo123!' });
+    const staffToken = loginStaff.body.data.accessToken;
+
+    const loginManager = await request(app).post('/api/v1/auth/login').send({ email: 'manager_analytics@pixora.dev', password: 'PixoraDemo123!' });
+    const managerToken = loginManager.body.data.accessToken;
+
+    // A. Verify STAFF is blocked (403 Forbidden) from Analytics
+    const staffRes = await request(app)
+      .get(`/api/v1/restaurants/${restaurant.id}/analytics`)
+      .set('Authorization', `Bearer ${staffToken}`);
+    expect(staffRes.status).toBe(403);
+
+    // B. Verify MANAGER can successfully fetch Analytics
+    const managerRes = await request(app)
+      .get(`/api/v1/restaurants/${restaurant.id}/analytics`)
+      .set('Authorization', `Bearer ${managerToken}`);
+
+    expect(managerRes.status).toBe(200);
+    expect(managerRes.body.success).toBe(true);
+    expect(managerRes.body.data.summary.current.revenue).toBe(0);
+    expect(managerRes.body.data.summary.current.orderCount).toBe(0);
+    expect(managerRes.body.data.charts.topSellingItems).toBeInstanceOf(Array);
+  });
 });
