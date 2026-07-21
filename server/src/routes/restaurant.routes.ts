@@ -23,4 +23,10 @@ router.post('/:restaurantId/tables/:tableId/regenerate-qr', requireRestaurantAcc
 // GET returns SVG + PNG details for the QR
 router.get('/:restaurantId/tables/:tableId/qr', requireRestaurantAccess as any, restaurantController.getTableQr);
 
+// Waiter Staff Management Endpoints (Manager-only)
+router.post('/:restaurantId/staff', requireRestaurantAccess as any, restaurantController.createStaff);
+router.get('/:restaurantId/staff', requireRestaurantAccess as any, restaurantController.listStaff);
+router.patch('/:restaurantId/staff/:staffId', requireRestaurantAccess as any, restaurantController.updateStaff);
+router.delete('/:restaurantId/staff/:staffId', requireRestaurantAccess as any, restaurantController.deleteStaff);
+
 export default router;

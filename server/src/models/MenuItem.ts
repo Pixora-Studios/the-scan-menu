@@ -18,6 +18,7 @@ export interface IMenuItem extends Document {
   prepTimeMinutes?: number;
   sortOrder: number;
   addOns?: IAddOn[];
+  isArchived: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +45,7 @@ const menuItemSchema = new Schema<IMenuItem>(
     prepTimeMinutes: { type: Number },
     sortOrder: { type: Number, required: true, default: 0 },
     addOns: [addOnSchema],
+    isArchived: { type: Boolean, required: true, default: false },
   },
   {
     timestamps: true,
