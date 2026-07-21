@@ -90,7 +90,7 @@ app.use('/api/v1/public', publicRoutes);
 app.use(errorHandler);
 
 // Socket.io initialization
-const socketCorsOrigin = process.env.SOCKET_CORS_ORIGIN || 'http://localhost:5173';
+const socketCorsOrigin = process.env.SOCKET_CORS_ORIGIN || process.env.CLIENT_URL || 'http://localhost:5173';
 SocketService.getInstance().init(httpServer, socketCorsOrigin);
 
 // Startup logic
