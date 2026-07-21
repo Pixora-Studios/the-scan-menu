@@ -13,41 +13,113 @@ import {
   Loader,
   AlertTriangle,
   Receipt,
+  X,
 } from 'lucide-react';
 import { publicService } from '../services/restaurant.service';
+import { useSocket, ConnectionStatus } from '../hooks/useSocket';
+import ConnectionIndicator from '../components/ConnectionIndicator';
 import apiClient from '../lib/api';
 
 // ==========================================
-// ISOLATED STATUS POLLING HOOK
+// SWAPPED REAL-TIME STATUS HOOK
 // ==========================================
 export const useOrderStatusPolling = (orderId: string) => {
   const [status, setStatus] = useState<string | null>(null);
-  const [error, setError] = useState<boolean>(false);
+  const { socket, status: connectionStatus } = useSocket(null);
 
   useEffect(() => {
-    if (!orderId) return;
+    if (!socket || !orderId) return;
 
-    const fetchStatus = async () => {
-      try {
-        const res = await apiClient.get(`/public/orders/${orderId}/status`);
-        if (res.data.success) {
-          setStatus(res.data.data.status);
-        }
-      } catch (err) {
-        console.error('Error polling order status:', err);
-        setError(true);
+    // Join public order room anonymously
+    socket.emit('join_order', { orderId });
+
+    // Listen for live status changes
+    socket.on('order:status_updated', (data: { orderId: string; status: string }) => {
+      if (data.orderId === orderId) {
+        setStatus(data.status);
       }
+    });
+
+    return () => {
+      socket.off('order:status_updated');
     };
+  }, [socket, orderId]);
 
-    // Initial fetch
-    fetchStatus();
+  return { status, connectionStatus };
+};
 
-    // Poll every 5 seconds (to be replaced with Socket.io in Phase 6)
-    const interval = setInterval(fetchStatus, 5000);
-    return () => clearInterval(interval);
-  }, [orderId]);
+// ==========================================
+// TIMELINE COMPONENT (WITH ANIMATED CONNECTING LINES)
+// ==========================================
+const TIMELINE_STEPS = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'];
+const TIMELINE_LABELS = ['Placed', 'Accepted', 'Preparing', 'Ready', 'Served'];
+const TIMELINE_ICONS = [Clock, CheckCircle2, ChefHat, Utensils, CheckCircle2];
 
-  return { status, error };
+interface TimelineProps {
+  currentStatus: string;
+}
+
+const Timeline: React.FC<TimelineProps> = ({ currentStatus }) => {
+  const currentIndex = TIMELINE_STEPS.indexOf(currentStatus);
+
+  if (currentStatus === 'CANCELLED') return null;
+
+  return (
+    <div className="w-full bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">
+      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider text-center block border-b border-slate-50 pb-2">
+        Preparation Timeline
+      </h4>
+      <div className="relative flex justify-between items-center w-full px-2">
+        {/* Animated Connecting Line Track */}
+        <div className="absolute left-6 right-6 top-[15px] h-1 bg-slate-100 -z-10 rounded" />
+
+        {/* Active fill line drawing itself */}
+        <motion.div
+          className="absolute left-6 top-[15px] h-1 bg-emerald-500 -z-10 rounded origin-left"
+          initial={{ width: '0%' }}
+          animate={{
+            width: currentIndex > 0 ? `${(currentIndex / (TIMELINE_STEPS.length - 1)) * 90}%` : '0%',
+          }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }} // smooth connecting fill animation
+        />
+
+        {TIMELINE_STEPS.map((step, idx) => {
+          const StepIcon = TIMELINE_ICONS[idx];
+          const isCompleted = idx <= currentIndex;
+          const isCurrent = idx === currentIndex;
+
+          return (
+            <div key={step} className="flex flex-col items-center space-y-2 relative">
+              {/* Timeline Node dot */}
+              <motion.div
+                layout
+                animate={{
+                  scale: isCurrent ? 1.25 : 1.0,
+                  backgroundColor: isCurrent ? '#10B981' : isCompleted ? '#34D399' : '#F1F5F9',
+                  borderColor: isCurrent ? '#D1FAE5' : isCompleted ? '#E2E8F0' : '#E2E8F0',
+                }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-[10px] ${
+                  isCompleted ? 'text-white' : 'text-slate-400'
+                } shadow-sm relative`}
+              >
+                <StepIcon className="w-4 h-4" strokeWidth={isCurrent ? 2.5 : 1.75} />
+              </motion.div>
+
+              {/* Label */}
+              <span
+                className={`text-[10px] font-bold tracking-wide transition-colors ${
+                  isCurrent ? 'text-emerald-600 font-extrabold' : isCompleted ? 'text-slate-800' : 'text-slate-400'
+                }`}
+              >
+                {TIMELINE_LABELS[idx]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 // ==========================================
@@ -61,7 +133,7 @@ export const PublicOrderConfirmation: React.FC = () => {
   }>();
   const navigate = useNavigate();
 
-  // 1. Fetch table and restaurant (for logo, theme variables, currency)
+  // 1. Fetch table and restaurant
   const { data: tableData, isLoading: isTableLoading } = useQuery({
     queryKey: ['publicTable', restaurantSlug, tableToken],
     queryFn: () => publicService.resolveTable(restaurantSlug!, tableToken!),
@@ -69,10 +141,10 @@ export const PublicOrderConfirmation: React.FC = () => {
     retry: false,
   });
 
-  // 2. Poll order status cheaply
-  const { status, error: isPollError } = useOrderStatusPolling(orderId!);
+  // 2. Subscribe and hook up live Socket.IO connection
+  const { status, connectionStatus } = useOrderStatusPolling(orderId!);
 
-  // 3. Fetch order details (items snapshot, subtotals)
+  // 3. Fetch order details (subtotals, receipt)
   const { data: orderData, isLoading: isOrderLoading } = useQuery({
     queryKey: ['publicOrderDetails', orderId],
     queryFn: async () => {
@@ -88,7 +160,7 @@ export const PublicOrderConfirmation: React.FC = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       setAnimationCompleted(true);
-    }, 1200); // Wait for checkmark drawing animation (~600ms) + buffer to complete
+    }, 1200);
     return () => clearTimeout(timer);
   }, []);
 
@@ -100,7 +172,7 @@ export const PublicOrderConfirmation: React.FC = () => {
     );
   }
 
-  const isError = !tableData?.success || !orderData?.success || isPollError;
+  const isError = !tableData?.success || !orderData?.success;
   if (isError) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 px-4 font-sans">
@@ -142,7 +214,6 @@ export const PublicOrderConfirmation: React.FC = () => {
     }).format(amt / 100);
   };
 
-  // Status-specific mapping
   const statusDetails: Record<string, { title: string; desc: string; icon: React.ReactNode; color: string }> = {
     PENDING: {
       title: 'Order Placed',
@@ -191,53 +262,72 @@ export const PublicOrderConfirmation: React.FC = () => {
 
   return (
     <div style={cssVariables} className="min-h-screen bg-slate-50 font-sans antialiased pb-12">
-      {/* Back button */}
+      {/* Back button and live connection indicator */}
       <div className="max-w-md mx-auto p-4 flex items-center justify-between">
         <button
           onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}`)}
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white shadow-sm border border-slate-150 py-1.5 px-3 rounded-full transition-colors"
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white shadow-sm border border-slate-150 py-1.5 px-3 rounded-full transition-colors animate-none"
         >
           <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
           Back to Menu
         </button>
-        <span className="text-xs font-mono font-bold text-slate-400">Order #{order.orderNumber}</span>
+        <div className="flex items-center gap-2">
+          <ConnectionIndicator status={connectionStatus as ConnectionStatus} />
+          <span className="text-xs font-mono font-bold text-slate-400">Order #{order.orderNumber}</span>
+        </div>
       </div>
 
       <main className="max-w-md mx-auto px-4 space-y-6">
         {/* Animated Checkmark and Confirmation Card */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm text-center flex flex-col items-center py-10 space-y-6">
-          <div className="relative">
-            {/* Draw Path SVG Checkmark Animation */}
-            <svg
-              className="w-20 h-20 text-emerald-500"
-              viewBox="0 0 52 52"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3.5"
-            >
-              <circle cx="26" cy="26" r="23" className="stroke-emerald-100" />
-              <motion.path
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                d="M14 27l8 8 16-16"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
+        {currentStatus !== 'CANCELLED' ? (
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm text-center flex flex-col items-center py-10 space-y-6">
+            <div className="relative">
+              <svg
+                className="w-20 h-20 text-emerald-500"
+                viewBox="0 0 52 52"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3.5"
+              >
+                <circle cx="26" cy="26" r="23" className="stroke-emerald-100" />
+                <motion.path
+                  initial={{ pathLength: 0 }}
+                  animate={{ pathLength: 1 }}
+                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                  d="M14 27l8 8 16-16"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
 
-          <div className="space-y-1">
-            <h1 className="font-display tracking-tight text-3xl font-normal text-slate-900">
-              Order Confirmed!
-            </h1>
-            <p className="text-xs text-slate-400 font-medium">
-              We received your order at {table.displayName}
-            </p>
+            <div className="space-y-1">
+              <h1 className="font-display tracking-tight text-3xl font-normal text-slate-900">
+                Order Confirmed!
+              </h1>
+              <p className="text-xs text-slate-400 font-medium">
+                We received your order at {table.displayName}
+              </p>
+            </div>
           </div>
-        </div>
+        ) : (
+          /* Distinct Cancelled State Alert */
+          <div className="bg-red-50/50 rounded-3xl p-6 border border-red-100 shadow-sm text-center flex flex-col items-center py-10 space-y-4">
+            <div className="h-16 w-16 bg-red-100 rounded-full flex items-center justify-center text-red-600">
+              <X className="w-8 h-8" strokeWidth={2.5} />
+            </div>
+            <div className="space-y-1">
+              <h1 className="font-display tracking-tight text-3xl font-normal text-red-900">
+                Order Cancelled
+              </h1>
+              <p className="text-xs text-red-500 font-medium">
+                This order was cancelled by the dining staff.
+              </p>
+            </div>
+          </div>
+        )}
 
-        {/* Polled Status Display (fades in) */}
+        {/* Polled Status Display */}
         <AnimatePresence>
           {animationCompleted && (
             <motion.div
@@ -256,6 +346,11 @@ export const PublicOrderConfirmation: React.FC = () => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Live Timeline Display (hides on cancel) */}
+        {currentStatus !== 'CANCELLED' && animationCompleted && (
+          <Timeline currentStatus={currentStatus} />
+        )}
 
         {/* Order Details list */}
         <AnimatePresence>

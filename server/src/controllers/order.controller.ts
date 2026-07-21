@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { Order, OrderStatus } from '../models/Order';
 import { validateStatusTransition } from '../utils/orderStateMachine';
 import { sendSuccess, sendError } from '../utils/response';
+import { SocketService } from '../sockets/socket.service';
 import mongoose from 'mongoose';
 
 export class OrderController {
@@ -135,6 +136,20 @@ export class OrderController {
       order.status = nextStatus as OrderStatus;
       await order.save();
 
+      // Emit order:status_updated to both order:{orderId} and restaurant:{restaurantId} rooms
+      try {
+        const io = SocketService.getInstance().getIO();
+        const payload = {
+          orderId: order._id,
+          status: order.status,
+          updatedAt: order.updatedAt,
+        };
+        io.to(`order:${order._id.toString()}`).emit('order:status_updated', payload);
+        io.to(`restaurant:${order.restaurantId.toString()}`).emit('order:status_updated', payload);
+      } catch (err) {
+        console.error('Failed to emit order:status_updated socket event:', err);
+      }
+
       sendSuccess(res, order, 'Order status updated successfully');
     } catch (error) {
       next(error);
@@ -177,6 +192,20 @@ export class OrderController {
 
       order.status = 'CANCELLED';
       await order.save();
+
+      // Emit order:status_updated to both order:{orderId} and restaurant:{restaurantId} rooms
+      try {
+        const io = SocketService.getInstance().getIO();
+        const payload = {
+          orderId: order._id,
+          status: order.status,
+          updatedAt: order.updatedAt,
+        };
+        io.to(`order:${order._id.toString()}`).emit('order:status_updated', payload);
+        io.to(`restaurant:${order.restaurantId.toString()}`).emit('order:status_updated', payload);
+      } catch (err) {
+        console.error('Failed to emit order:status_updated socket event for cancellation:', err);
+      }
 
       sendSuccess(res, order, 'Order cancelled successfully');
     } catch (error) {
