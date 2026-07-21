@@ -50,10 +50,11 @@ export class AuthController {
 
       await this.tokenRepository.create(user.id, tokenHash, expiresAt);
 
+      const isProd = process.env.NODE_ENV === 'production';
       res.cookie('refreshToken', refreshTokenStr, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'strict',
         path: '/api/v1/auth',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
@@ -120,10 +121,11 @@ export class AuthController {
 
       await this.tokenRepository.create(user.id, newRefreshTokenHash, expiresAt);
 
+      const isProd = process.env.NODE_ENV === 'production';
       res.cookie('refreshToken', newRefreshTokenStr, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'strict',
         path: '/api/v1/auth',
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
@@ -148,10 +150,11 @@ export class AuthController {
         await this.tokenRepository.revoke(tokenHash);
       }
 
+      const isProd = process.env.NODE_ENV === 'production';
       res.clearCookie('refreshToken', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        secure: isProd,
+        sameSite: isProd ? 'none' : 'strict',
         path: '/api/v1/auth',
       });
 
