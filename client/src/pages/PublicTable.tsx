@@ -178,6 +178,30 @@ export const PublicTable: React.FC = () => {
     { menuItemId: string; name: string; reason: 'unavailable' | 'category_inactive' }[]
   >([]);
 
+  // Phase 7 Waiter Call States
+  const [waiterCallState, setWaiterCallState] = useState<'idle' | 'pulsing' | 'waiting'>('idle');
+
+  // Query active waiter call on mount
+  const { data: activeCallData } = useQuery({
+    queryKey: ['activeWaiterCall', tableToken],
+    queryFn: async () => {
+      const res = await apiClient.get(`/public/tables/${tableToken}/waiter-call/active`);
+      return res.data;
+    },
+    enabled: !!tableToken,
+  });
+
+  // Sync initial waiter call state
+  useEffect(() => {
+    if (activeCallData?.success) {
+      if (activeCallData.data) {
+        setWaiterCallState('waiting');
+      } else {
+        setWaiterCallState('idle');
+      }
+    }
+  }, [activeCallData]);
+
   // Bottom Sheet States for Item Detail
   const [detailQuantity, setDetailQuantity] = useState(1);
   const [detailSelectedAddOns, setDetailSelectedAddOns] = useState<AddOn[]>([]);
@@ -440,10 +464,23 @@ export const PublicTable: React.FC = () => {
   };
 
   // Call Waiter confirm
-  const handleCallWaiterConfirm = () => {
+  const handleCallWaiterConfirm = async () => {
     setIsWaiterModalOpen(false);
-    // Phase 7 TODO: Emit "waiter_call" socket event / database mutation
-    toast('Calling waiter... Staff has been notified.', 'info');
+    setWaiterCallState('pulsing');
+
+    try {
+      await apiClient.post(`/public/tables/${tableToken}/waiter-call`);
+      toast('Calling waiter... Staff has been notified.', 'info');
+
+      // Let it pulse for exactly 2.4s (3 pulses of 0.8s) before settling into waiting
+      setTimeout(() => {
+        setWaiterCallState('waiting');
+      }, 2400);
+    } catch (err: any) {
+      console.error(err);
+      toast('Failed to call waiter. Please try again or ask floor staff.', 'error');
+      setWaiterCallState('idle');
+    }
   };
 
   const cartSubtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -499,13 +536,40 @@ export const PublicTable: React.FC = () => {
             </div>
           </div>
           {/* Waiter call */}
-          <button
-            onClick={() => setIsWaiterModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 text-[var(--theme-accent)] hover:bg-amber-100/70 text-xs font-semibold tracking-wide transition-colors"
-          >
-            <BellRing className="w-4 h-4 animate-bounce" strokeWidth={1.75} />
-            Call Waiter
-          </button>
+          {waiterCallState === 'idle' && (
+            <button
+              onClick={() => setIsWaiterModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 text-[var(--theme-accent)] hover:bg-amber-100/70 text-xs font-semibold tracking-wide transition-colors"
+            >
+              <BellRing className="w-4 h-4 animate-bounce" strokeWidth={1.75} />
+              Call Waiter
+            </button>
+          )}
+
+          {waiterCallState === 'pulsing' && (
+            <button
+              disabled
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 text-[var(--theme-accent)] text-xs font-semibold tracking-wide cursor-not-allowed select-none relative overflow-hidden"
+            >
+              <span className="relative flex h-2 w-2 mr-0.5">
+                <motion.span
+                  initial={{ scale: 1, opacity: 0.8 }}
+                  animate={{ scale: 3, opacity: 0 }}
+                  transition={{ duration: 0.8, repeat: 2, ease: "easeOut" }} // exactly 3 pulses total
+                  className="absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"
+                />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+              </span>
+              <span>Calling...</span>
+            </button>
+          )}
+
+          {waiterCallState === 'waiting' && (
+            <div className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-100 text-amber-800 border border-amber-200/50 text-xs font-bold tracking-wide select-none">
+              <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" strokeWidth={2} />
+              <span>Staff Alerted</span>
+            </div>
+          )}
         </div>
       </div>
 

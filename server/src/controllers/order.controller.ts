@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { Order, OrderStatus } from '../models/Order';
 import { validateStatusTransition } from '../utils/orderStateMachine';
 import { sendSuccess, sendError } from '../utils/response';
-import { SocketService } from '../sockets/socket.service';
+import { NotificationService } from '../services/notification.service';
 import mongoose from 'mongoose';
 
 export class OrderController {
@@ -136,18 +136,16 @@ export class OrderController {
       order.status = nextStatus as OrderStatus;
       await order.save();
 
-      // Emit order:status_updated to both order:{orderId} and restaurant:{restaurantId} rooms
+      // Emit order:status_updated via central NotificationService
       try {
-        const io = SocketService.getInstance().getIO();
-        const payload = {
-          orderId: order._id,
-          status: order.status,
-          updatedAt: order.updatedAt,
-        };
-        io.to(`order:${order._id.toString()}`).emit('order:status_updated', payload);
-        io.to(`restaurant:${order.restaurantId.toString()}`).emit('order:status_updated', payload);
+        NotificationService.getInstance().notifyOrderStatusUpdated(
+          order.restaurantId.toString(),
+          order._id.toString(),
+          order.status,
+          order.updatedAt
+        );
       } catch (err) {
-        console.error('Failed to emit order:status_updated socket event:', err);
+        console.error('Failed to notify order status update:', err);
       }
 
       sendSuccess(res, order, 'Order status updated successfully');
@@ -193,18 +191,16 @@ export class OrderController {
       order.status = 'CANCELLED';
       await order.save();
 
-      // Emit order:status_updated to both order:{orderId} and restaurant:{restaurantId} rooms
+      // Emit order:status_updated via central NotificationService
       try {
-        const io = SocketService.getInstance().getIO();
-        const payload = {
-          orderId: order._id,
-          status: order.status,
-          updatedAt: order.updatedAt,
-        };
-        io.to(`order:${order._id.toString()}`).emit('order:status_updated', payload);
-        io.to(`restaurant:${order.restaurantId.toString()}`).emit('order:status_updated', payload);
+        NotificationService.getInstance().notifyOrderStatusUpdated(
+          order.restaurantId.toString(),
+          order._id.toString(),
+          order.status,
+          order.updatedAt
+        );
       } catch (err) {
-        console.error('Failed to emit order:status_updated socket event for cancellation:', err);
+        console.error('Failed to notify order status update on cancel:', err);
       }
 
       sendSuccess(res, order, 'Order cancelled successfully');

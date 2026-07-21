@@ -5,7 +5,7 @@ import { Category } from '../models/Category';
 import { MenuItem } from '../models/MenuItem';
 import { Order, OrderCounter } from '../models/Order';
 import { sendSuccess, sendError } from '../utils/response';
-import { SocketService } from '../sockets/socket.service';
+import { NotificationService } from '../services/notification.service';
 import mongoose from 'mongoose';
 
 export class PublicController {
@@ -266,9 +266,8 @@ export class PublicController {
 
       await order.save();
 
-      // Emit order:created to restaurant:{restaurantId} room
+      // Emit order:created via central NotificationService
       try {
-        const io = SocketService.getInstance().getIO();
         const orderSummary = {
           _id: order._id,
           restaurantId: order.restaurantId,
@@ -287,9 +286,9 @@ export class PublicController {
           source: order.source,
           createdAt: order.createdAt,
         };
-        io.to(`restaurant:${order.restaurantId.toString()}`).emit('order:created', orderSummary);
+        NotificationService.getInstance().notifyOrderCreated(order.restaurantId.toString(), orderSummary);
       } catch (err) {
-        console.error('Failed to emit order:created socket event:', err);
+        console.error('Failed to notify order creation:', err);
       }
 
       sendSuccess(res, order, 'Order placed successfully', 201);
