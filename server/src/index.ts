@@ -40,6 +40,7 @@ import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import menuRoutes from './routes/menu.routes';
 import restaurantRoutes from './routes/restaurant.routes';
+import orderRoutes from './routes/order.routes';
 import publicRoutes from './routes/public.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { SocketService } from './sockets/socket.service';
@@ -75,7 +76,9 @@ app.use(cookieParser());
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);
 
+// Mount orderRoutes first so STAFF role can access orders without being blocked by menuRoutes/restaurantRoutes top-level MANAGER checks.
 // Mount menuRoutes BEFORE restaurantRoutes to prevent wildcard param collision clashing (:restaurantId matches categories-reorder etc.)
+app.use('/api/v1/restaurants', orderRoutes);
 app.use('/api/v1/restaurants', menuRoutes);
 app.use('/api/v1/restaurants', restaurantRoutes);
 

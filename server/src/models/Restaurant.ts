@@ -28,6 +28,7 @@ export interface IRestaurant extends Document {
   timezone: string;
   theme: IRestaurantTheme;
   isActive: boolean;
+  taxRatePercent: number;
   integrationConfig: IIntegrationConfig;
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +47,7 @@ const restaurantSchema = new Schema<IRestaurant>(
     googleReviewUrl: { type: String, trim: true },
     currency: { type: String, required: true, default: 'INR' },
     timezone: { type: String, required: true, default: 'Asia/Kolkata' },
+    taxRatePercent: { type: Number, required: true, default: 0 },
     theme: {
       primaryColor: { type: String, required: true, default: '#111827' },
       secondaryColor: { type: String, required: true, default: '#FFFFFF' },

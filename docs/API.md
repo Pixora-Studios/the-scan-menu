@@ -32,6 +32,147 @@ This document details the HTTP endpoints for managing Restaurants, Tables, Categ
 
 ---
 
+## 📦 Orders & Status Management Endpoints
+
+### 1. Place a New Order (Public, no auth)
+Submits a table's local cart items to place an order. Recomputes all base and add-on pricing strictly server-side.
+- **Method:** `POST`
+- **Path:** `/api/v1/public/restaurants/:restaurantSlug/tables/:tableToken/orders`
+- **Request Body:**
+  ```json
+  {
+    "items": [
+      {
+        "itemId": "60d0fe...",
+        "quantity": 2,
+        "selectedAddOns": [
+          { "name": "Extra Mozzarella" }
+        ],
+        "specialInstructions": "No onions"
+      }
+    ],
+    "customerNote": "Please bring hot sauce"
+  }
+  ```
+- **Response (211 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "_id": "60d0fe...",
+      "restaurantId": "60d0fe...",
+      "tableId": "60d0fe...",
+      "orderNumber": 1,
+      "items": [ ... ],
+      "subtotal": 12000,
+      "tax": 600,
+      "total": 12600,
+      "customerNote": "Please bring hot sauce",
+      "status": "PENDING",
+      "source": "QR"
+    },
+    "message": "Order placed successfully"
+  }
+  ```
+- **Response (400 Bad Request - ITEMS_UNAVAILABLE):**
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "ITEMS_UNAVAILABLE",
+      "message": "Some items in your basket are currently unavailable.",
+      "details": [
+        { "menuItemId": "60d0fe...", "name": "Margherita", "reason": "unavailable" }
+      ]
+    }
+  }
+  ```
+
+---
+
+### 2. Get Order Details (Public, no auth)
+- **Method:** `GET`
+- **Path:** `/api/v1/public/orders/:orderId`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": { ... },
+    "message": "Order retrieved successfully"
+  }
+  ```
+
+---
+
+### 3. Get Order Status Only (Public, no auth, for cheap polling)
+- **Method:** `GET`
+- **Path:** `/api/v1/public/orders/:orderId/status`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": { "status": "PENDING" },
+    "message": "Order status retrieved successfully"
+  }
+  ```
+
+---
+
+### 4. List Paginated Restaurant Orders (Require MANAGER/STAFF/SUPER_ADMIN, requireRestaurantAccess check)
+- **Method:** `GET`
+- **Path:** `/api/v1/restaurants/:restaurantId/orders?page=1&limit=10&status=PENDING`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "orders": [ ... ],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 4,
+        "totalPages": 1
+      }
+    },
+    "message": "Orders retrieved successfully"
+  }
+  ```
+
+---
+
+### 5. List Active Restaurant Orders (Require MANAGER/STAFF/SUPER_ADMIN, requireRestaurantAccess check)
+Returns all active queue tickets (everything not SERVED or CANCELLED) sorted by oldest first.
+- **Method:** `GET`
+- **Path:** `/api/v1/restaurants/:restaurantId/orders/active`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": [ ... ],
+    "message": "Active orders retrieved successfully"
+  }
+  ```
+
+---
+
+### 6. Update Order Status (Require MANAGER/STAFF/SUPER_ADMIN, requireRestaurantAccess check)
+Progresses the order status. Must run through transition validation rules.
+- **Method:** `PATCH`
+- **Path:** `/api/v1/restaurants/:restaurantId/orders/:orderId/status`
+- **Request Body:**
+  ```json
+  { "status": "ACCEPTED" }
+  ```
+
+---
+
+### 7. Cancel Order (Require MANAGER/SUPER_ADMIN only, requireRestaurantAccess check)
+Directly cancels an active order. Blocked for STAFF role.
+- **Method:** `POST`
+- **Path:** `/api/v1/restaurants/:restaurantId/orders/:orderId/cancel`
+
+---
+
 ### 2. Get Public Menu
 Returns active categories sorted by `sortOrder` with their associated menu items nested (including both available and unavailable ones).
 - **Method:** `GET`
