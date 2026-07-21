@@ -1,0 +1,103 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Pixora QR Platform API Spec",
+    "description": "API Specification for Pixora mobile-first QR ordering and management platform.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5000/api/v1",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Authenticates credentials and registers session cookies",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
+                },
+                "required": ["email", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Successfully authenticated" }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "summary": "Silent session token rotation via refresh cookie",
+        "responses": {
+          "200": { "description": "Token rotated successfully" }
+        }
+      }
+    },
+    "/admin/stats": {
+      "get": {
+        "summary": "Platform-wide summary metrics and activity feeds (SUPER_ADMIN)",
+        "responses": {
+          "200": { "description": "Stats compiled successfully" }
+        }
+      }
+    },
+    "/admin/restaurants": {
+      "post": {
+        "summary": "Registers a new restaurant tenant (SUPER_ADMIN)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "slug": { "type": "string" }
+                },
+                "required": ["name"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Restaurant created" }
+        }
+      }
+    },
+    "/restaurants/{restaurantId}/analytics": {
+      "get": {
+        "summary": "High-performance date-range business metrics (MANAGER/SUPER_ADMIN)",
+        "parameters": [
+          { "name": "restaurantId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "startDate", "in": "query", "schema": { "type": "string" } },
+          { "name": "endDate", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Insight payload compiled" }
+        }
+      }
+    },
+    "/public/restaurants/{restaurantSlug}/tables/{tableToken}/orders": {
+      "post": {
+        "summary": "Placing newly structured checkout orders from customer tables",
+        "parameters": [
+          { "name": "restaurantSlug", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "tableToken", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "211": { "description": "Order created successfully" }
+        }
+      }
+    }
+  }
+}

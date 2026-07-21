@@ -3,8 +3,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../hooks/useToast';
 import { adminService, Restaurant } from '../services/restaurant.service';
-import { Plus, Edit2, ShieldAlert, CheckCircle, Shield, UserPlus, X, Loader } from 'lucide-react';
+import {
+  Plus,
+  Edit2,
+  ShieldAlert,
+  CheckCircle,
+  Shield,
+  UserPlus,
+  X,
+  Loader,
+  TrendingUp,
+  LayoutGrid,
+  Store,
+  Layers,
+  LogOut,
+} from 'lucide-react';
 
 const restaurantSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -26,27 +42,44 @@ type RestaurantFormValues = z.infer<typeof restaurantSchema>;
 type ManagerFormValues = z.infer<typeof managerSchema>;
 
 export const AdminRestaurants: React.FC = () => {
+  const { logout } = useAuth();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingRest, setEditingRest] = useState<Restaurant | null>(null);
   const [assigningRestId, setAssigningRestId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Fetch stats
+  const { data: statsResponse, isLoading: isLoadingStats } = useQuery({
+    queryKey: ['adminStats'],
+    queryFn: adminService.getPlatformStats,
+  });
+
   // Fetch restaurants
-  const { data, isLoading } = useQuery({
+  const { data: restResponse, isLoading: isLoadingRests } = useQuery({
     queryKey: ['adminRestaurants'],
     queryFn: () => adminService.listRestaurants(1, 100),
   });
 
-  const restaurants = data?.data?.restaurants || [];
+  const restaurants = restResponse?.data?.restaurants || [];
+  const stats = statsResponse?.data || {
+    totalRestaurants: 0,
+    activeRestaurants: 0,
+    suspendedRestaurants: 0,
+    totalOrders: 0,
+    activityFeed: [],
+  };
 
   // Create restaurant
   const createMutation = useMutation({
     mutationFn: adminService.createRestaurant,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] });
+      queryClient.invalidateQueries({ queryKey: ['adminStats'] });
       setIsCreateOpen(false);
       restForm.reset();
+      toast('Restaurant tenant successfully registered on the platform!', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error creating restaurant');
@@ -61,6 +94,7 @@ export const AdminRestaurants: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] });
       setEditingRest(null);
       restForm.reset();
+      toast('Restaurant details successfully saved!', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error updating restaurant');
@@ -70,13 +104,21 @@ export const AdminRestaurants: React.FC = () => {
   // Suspend
   const suspendMutation = useMutation({
     mutationFn: adminService.suspendRestaurant,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] });
+      queryClient.invalidateQueries({ queryKey: ['adminStats'] });
+      toast('Restaurant suspended immediately. Custom menu disabled.', 'info');
+    },
   });
 
   // Activate
   const activateMutation = useMutation({
     mutationFn: adminService.activateRestaurant,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] });
+      queryClient.invalidateQueries({ queryKey: ['adminStats'] });
+      toast('Restaurant activated. Live checkouts resumed.', 'success');
+    },
   });
 
   // Create & Assign Manager
@@ -87,7 +129,7 @@ export const AdminRestaurants: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['adminRestaurants'] });
       setAssigningRestId(null);
       managerForm.reset();
-      alert('Manager created and assigned successfully.');
+      toast('Platform manager credentials created and assigned successfully!', 'success');
     },
     onError: (err: any) => {
       setErrorMsg(err.response?.data?.error?.message || 'Error creating/assigning manager');
@@ -136,110 +178,212 @@ export const AdminRestaurants: React.FC = () => {
     setIsCreateOpen(true);
   };
 
-  if (isLoading) {
+  if (isLoadingStats || isLoadingRests) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader className="w-8 h-8 animate-spin text-amber-500" />
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader className="w-8 h-8 animate-spin text-amber-500" strokeWidth={1.75} />
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="font-display tracking-tight text-4xl font-bold text-slate-900">
-            Manage Restaurants
+    <div className="min-h-screen bg-[#F9FAFB] font-sans flex flex-col">
+      {/* Top Header Control */}
+      <header className="bg-white border-b border-slate-150 px-6 py-4 flex items-center justify-between shadow-sm">
+        <div className="flex items-center gap-3">
+          <Shield className="w-6 h-6 text-amber-500" strokeWidth={1.75} />
+          <h1 className="font-display tracking-tight text-3xl font-semibold text-slate-900 leading-none">
+            Pixora SuperAdmin
           </h1>
-          <p className="text-slate-500 text-sm">Super Admin platform control center</p>
         </div>
+
         <button
-          onClick={() => {
-            setEditingRest(null);
-            restForm.reset({
-              name: '',
-              slug: '',
-              description: '',
-              phone: '',
-              email: '',
-              address: '',
-              googleReviewUrl: '',
-            });
-            setIsCreateOpen(true);
-          }}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold hover:bg-slate-800 transition"
+          onClick={logout}
+          className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-red-600 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-red-50 transition"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add Restaurant</span>
+          <LogOut className="w-4 h-4" strokeWidth={1.75} />
+          <span>Platform Log Out</span>
         </button>
-      </div>
+      </header>
 
-      {/* Grid List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {restaurants.map((rest: Restaurant) => (
-          <div
-            key={rest._id}
-            className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition"
-          >
-            <div>
-              <div className="flex justify-between items-start mb-3">
-                <h3 className="font-bold text-lg text-slate-900">{rest.name}</h3>
-                <span
-                  className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
-                    rest.isActive
-                      ? 'bg-green-50 text-green-700'
-                      : 'bg-red-50 text-red-700'
-                  }`}
-                >
-                  {rest.isActive ? 'Active' : 'Suspended'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 font-mono mb-2">Slug: {rest.slug}</p>
-              <p className="text-sm text-slate-600 line-clamp-2 mb-4">
-                {rest.description || 'No description provided.'}
-              </p>
+      {/* Main Content Layout */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-6 py-8 space-y-8 overflow-y-auto">
+
+        {/* 1. Statistics Summary */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white border border-slate-150 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-center text-slate-400">
+              <span className="text-xs font-extrabold uppercase tracking-wider">Total Tenants</span>
+              <Store className="w-4.5 h-4.5 text-slate-400" strokeWidth={1.75} />
             </div>
-
-            <div className="border-t border-slate-50 pt-4 mt-auto flex flex-wrap gap-2">
-              <button
-                onClick={() => handleEditClick(rest)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-primary px-3 py-1.5 rounded-lg hover:bg-slate-50 transition"
-              >
-                <Edit2 className="w-3.5 h-3.5" />
-                <span>Edit</span>
-              </button>
-
-              <button
-                onClick={() => setAssigningRestId(rest._id)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 hover:text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-50 transition"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Add Manager</span>
-              </button>
-
-              {rest.isActive ? (
-                <button
-                  onClick={() => suspendMutation.mutate(rest._id)}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-800 px-3 py-1.5 rounded-lg hover:bg-red-50 transition ml-auto"
-                >
-                  <ShieldAlert className="w-3.5 h-3.5" />
-                  <span>Suspend</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => activateMutation.mutate(rest._id)}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-green-600 hover:text-green-800 px-3 py-1.5 rounded-lg hover:bg-green-50 transition ml-auto"
-                >
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  <span>Activate</span>
-                </button>
-              )}
-            </div>
+            <h3 className="text-2xl font-black font-mono text-slate-900 mt-2">{stats.totalRestaurants}</h3>
           </div>
-        ))}
-      </div>
 
-      {/* Create / Edit Modal */}
+          <div className="bg-white border border-slate-150 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-center text-green-600">
+              <span className="text-xs font-extrabold uppercase tracking-wider">Active</span>
+              <CheckCircle className="w-4.5 h-4.5" strokeWidth={1.75} />
+            </div>
+            <h3 className="text-2xl font-black font-mono text-slate-900 mt-2">{stats.activeRestaurants}</h3>
+          </div>
+
+          <div className="bg-white border border-slate-150 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-center text-rose-500">
+              <span className="text-xs font-extrabold uppercase tracking-wider">Suspended</span>
+              <ShieldAlert className="w-4.5 h-4.5" strokeWidth={1.75} />
+            </div>
+            <h3 className="text-2xl font-black font-mono text-slate-900 mt-2">{stats.suspendedRestaurants}</h3>
+          </div>
+
+          <div className="bg-white border border-slate-150 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
+            <div className="flex justify-between items-center text-indigo-500">
+              <span className="text-xs font-extrabold uppercase tracking-wider">Platform Orders</span>
+              <TrendingUp className="w-4.5 h-4.5" strokeWidth={1.75} />
+            </div>
+            <h3 className="text-2xl font-black font-mono text-slate-900 mt-2">{stats.totalOrders}</h3>
+          </div>
+        </div>
+
+        {/* 2. Middle Row: activity feed + action header */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Restaurant list panel (2/3 width) */}
+          <div className="lg:col-span-2 space-y-5">
+            <div className="flex justify-between items-center bg-white border border-slate-150 p-4 rounded-2xl shadow-sm">
+              <div>
+                <h2 className="text-base font-extrabold text-slate-900">Registered Restaurant Tenants</h2>
+                <p className="text-[11px] text-slate-500">Add, configure, suspend, or assign managers inline.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setEditingRest(null);
+                  restForm.reset({
+                    name: '',
+                    slug: '',
+                    description: '',
+                    phone: '',
+                    email: '',
+                    address: '',
+                    googleReviewUrl: '',
+                  });
+                  setIsCreateOpen(true);
+                }}
+                className="flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm border border-slate-950"
+              >
+                <Plus className="w-4 h-4" strokeWidth={1.75} />
+                <span>Register Tenant</span>
+              </button>
+            </div>
+
+            {restaurants.length === 0 ? (
+              <div className="bg-white p-12 rounded-3xl border border-slate-150 text-center text-slate-400">
+                No restaurants found on this platform.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {restaurants.map((rest: Restaurant) => (
+                  <div
+                    key={rest._id}
+                    className="bg-white rounded-3xl border border-slate-150 p-5 shadow-sm flex flex-col justify-between hover:shadow transition"
+                  >
+                    <div>
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-bold text-sm text-slate-950 leading-tight">{rest.name}</h3>
+                        <span
+                          className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                            rest.isActive
+                              ? 'bg-green-50 text-green-700 border border-green-100'
+                              : 'bg-red-50 text-red-700 border border-red-100'
+                          }`}
+                        >
+                          {rest.isActive ? 'Active' : 'Suspended'}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-mono">Slug: {rest.slug}</p>
+                      <p className="text-xs text-slate-500 line-clamp-2 mt-2 leading-relaxed">
+                        {rest.description || 'No description provided.'}
+                      </p>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-3 mt-4 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-600">
+                      <button
+                        onClick={() => handleEditClick(rest)}
+                        className="flex items-center gap-1 hover:text-slate-900 transition p-1"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => setAssigningRestId(rest._id)}
+                        className="flex items-center gap-1 text-amber-600 hover:text-amber-800 transition p-1 ml-2"
+                      >
+                        <UserPlus className="w-3.5 h-3.5" strokeWidth={1.75} />
+                        <span>Add Manager</span>
+                      </button>
+
+                      {rest.isActive ? (
+                        <button
+                          onClick={() => suspendMutation.mutate(rest._id)}
+                          className="flex items-center gap-1 text-red-500 hover:text-red-700 transition p-1 ml-auto"
+                        >
+                          <ShieldAlert className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          <span>Suspend</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => activateMutation.mutate(rest._id)}
+                          className="flex items-center gap-1 text-green-600 hover:text-green-800 transition p-1 ml-auto"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          <span>Activate</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Activity Feed (1/3 width) */}
+          <div className="bg-white border border-slate-150 rounded-3xl p-5 shadow-sm space-y-4">
+            <div>
+              <h2 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-amber-500" strokeWidth={1.75} />
+                <span>Live Activity Feed</span>
+              </h2>
+              <p className="text-[10px] text-slate-400 mt-0.5">Real-time platform events log.</p>
+            </div>
+
+            {stats.activityFeed.length === 0 ? (
+              <div className="text-center py-10 text-xs text-slate-400 leading-normal">
+                No recent platform activity logged.
+              </div>
+            ) : (
+              <div className="space-y-4 max-h-[30rem] overflow-y-auto pr-1">
+                {stats.activityFeed.map((act: any, idx: number) => (
+                  <div key={idx} className="flex gap-2.5 text-xs">
+                    <div className="shrink-0 mt-0.5">
+                      <span className={`h-2 w-2 rounded-full block ${act.type === 'RESTAURANT_CREATED' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                    </div>
+                    <div className="space-y-0.5 flex-1 min-w-0">
+                      <p className="text-slate-700 leading-relaxed font-sans">{act.message}</p>
+                      <p className="text-[10px] text-slate-400 font-mono">
+                        {new Date(act.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+        </div>
+
+      </main>
+
+      {/* Create / Edit Restaurant Modal */}
       {isCreateOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 w-full max-w-lg shadow-xl border border-slate-100 max-h-[90vh] overflow-y-auto">
@@ -249,9 +393,9 @@ export const AdminRestaurants: React.FC = () => {
               </h2>
               <button
                 onClick={() => setIsCreateOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1"
+                className="text-slate-400 hover:text-slate-600 p-1 animate-none"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" strokeWidth={1.75} />
               </button>
             </div>
 
@@ -356,9 +500,11 @@ export const AdminRestaurants: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-slate-800 transition"
+                  disabled={createMutation.isPending || editMutation.isPending}
+                  className="w-1/2 py-2.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition flex items-center justify-center gap-1.5"
                 >
-                  {editingRest ? 'Save Changes' : 'Create'}
+                  {(createMutation.isPending || editMutation.isPending) && <Loader className="w-4 h-4 animate-spin" />}
+                  <span>{editingRest ? 'Save Changes' : 'Register Tenant'}</span>
                 </button>
               </div>
             </form>
@@ -372,14 +518,14 @@ export const AdminRestaurants: React.FC = () => {
           <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl border border-slate-100">
             <div className="flex justify-between items-center mb-6">
               <div className="flex items-center gap-2 text-amber-500">
-                <Shield className="w-5 h-5" />
+                <LayoutGrid className="w-5 h-5" strokeWidth={1.75} />
                 <h2 className="font-display text-2xl font-bold">Create Restaurant Manager</h2>
               </div>
               <button
                 onClick={() => setAssigningRestId(null)}
                 className="text-slate-400 hover:text-slate-600 p-1"
               >
-                <X className="w-5 h-5" />
+                <X className="w-5 h-5" strokeWidth={1.75} />
               </button>
             </div>
 
@@ -445,9 +591,11 @@ export const AdminRestaurants: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="w-1/2 py-2.5 bg-primary text-white text-sm font-semibold rounded-xl hover:bg-slate-800 transition"
+                  disabled={managerMutation.isPending}
+                  className="w-1/2 py-2.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-300 text-white text-sm font-semibold rounded-xl transition flex items-center justify-center gap-1.5"
                 >
-                  Create & Assign
+                  {managerMutation.isPending && <Loader className="w-4 h-4 animate-spin" />}
+                  <span>Create & Assign</span>
                 </button>
               </div>
             </form>

@@ -20,9 +20,12 @@ From the root of the repository, the following workspace-delegated commands are 
 ## 🔒 LOCAL DEVELOPMENT & SEED DATA
 > ⚠️ **Local dev only — never use in production**
 
-Phase 1 includes an idempotent seeding script to bootstrap development. The script creates one `SUPER_ADMIN` user with the following fixed developer credentials, which are printed to the console on run:
-- **Email:** `admin@pixora.dev`
-- **Password:** `PixoraDemo123!`
+Phase 1 includes an idempotent seeding script to bootstrap development. The script creates one `SUPER_ADMIN` user and a complete "Demo Cafe" restaurant with five categories, twenty menu items, and predefined manager and staff logins:
+
+- **Super Admin:** `admin@pixora.dev` / `PixoraDemo123!`
+- **Demo Cafe Manager:** `manager@democafe.com` / `PixoraDemo123!`
+- **Demo Cafe Staff One:** `staff1@democafe.com` / `PixoraDemo123!`
+- **Demo Cafe Staff Two:** `staff2@democafe.com` / `PixoraDemo123!`
 
 ### Running the Seed Script
 To run the seed script locally, run this command from the root of the repository:

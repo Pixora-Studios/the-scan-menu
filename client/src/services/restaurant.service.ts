@@ -78,6 +78,11 @@ export interface PublicResolutionResponse {
 }
 
 export const adminService = {
+  async getPlatformStats() {
+    const res = await apiClient.get('/admin/stats');
+    return res.data;
+  },
+
   async listRestaurants(page = 1, limit = 10) {
     const res = await apiClient.get(`/admin/restaurants?page=${page}&limit=${limit}`);
     return res.data;

@@ -36,6 +36,12 @@ if (missingEnv.length > 0) {
   process.exit(1);
 }
 
+// Fail loudly if EMAIL_ENABLED=true but EMAIL_FROM is missing (except when running in test mode)
+if (process.env.NODE_ENV !== 'test' && process.env.EMAIL_ENABLED === 'true' && !process.env.EMAIL_FROM) {
+  console.error('FATAL ERROR: EMAIL_ENABLED=true but EMAIL_FROM environment variable is unset.');
+  process.exit(1);
+}
+
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
 import menuRoutes from './routes/menu.routes';

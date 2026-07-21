@@ -4,6 +4,8 @@ import { Table } from '../models/Table';
 import { Category } from '../models/Category';
 import { MenuItem } from '../models/MenuItem';
 import { Order, OrderCounter } from '../models/Order';
+import { IntegrationSyncLog } from '../models/IntegrationSyncLog';
+import { IntegrationFactory } from '../integrations/core/IntegrationFactory';
 import { sendSuccess, sendError } from '../utils/response';
 import { NotificationService } from '../services/notification.service';
 import mongoose from 'mongoose';
@@ -265,6 +267,33 @@ export class PublicController {
       });
 
       await order.save();
+
+      // Trigger POS integration push as an asynchronous, non-blocking side-effect
+      try {
+        const providerName = restaurant.integrationConfig?.provider || 'NONE';
+        const syncLog = new IntegrationSyncLog({
+          restaurantId: restaurant._id,
+          orderId: order._id,
+          provider: providerName,
+          status: 'ORDER_SYNC_PENDING',
+          syncAttempts: 1,
+        });
+        await syncLog.save();
+
+        const adapter = IntegrationFactory.getAdapter(providerName);
+        adapter.pushOrder(order)
+          .then(async () => {
+            syncLog.status = 'ORDER_SYNCED';
+            await syncLog.save();
+          })
+          .catch(async (err: any) => {
+            syncLog.status = 'ORDER_SYNC_FAILED';
+            syncLog.errorLog = err.message || 'Unknown integration error';
+            await syncLog.save();
+          });
+      } catch (integrationErr) {
+        console.error('Failed to trigger POS integration sync:', integrationErr);
+      }
 
       // Emit order:created via central NotificationService
       try {

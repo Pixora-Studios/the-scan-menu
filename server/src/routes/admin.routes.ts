@@ -8,6 +8,7 @@ const adminController = new AdminController();
 // Require both auth + platform role SUPER_ADMIN
 router.use(requireAuth as any, requireRole('SUPER_ADMIN'));
 
+router.get('/stats', adminController.getPlatformStats);
 router.post('/restaurants', adminController.createRestaurant);
 router.get('/restaurants', adminController.listRestaurants);
 router.get('/restaurants/:id', adminController.getRestaurant);

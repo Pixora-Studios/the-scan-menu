@@ -3,7 +3,10 @@ import { AuthenticatedRequest } from '../middleware/auth';
 import { Restaurant } from '../models/Restaurant';
 import { RestaurantStaff } from '../models/RestaurantStaff';
 import { User } from '../models/User';
+import { Order } from '../models/Order';
 import { sendSuccess, sendError } from '../utils/response';
+import { EmailService } from '../services/email.service';
+import { logger } from '../utils/logger';
 import bcrypt from 'bcrypt';
 
 function slugify(text: string): string {
@@ -25,6 +28,54 @@ export class AdminController {
     this.suspendRestaurant = this.suspendRestaurant.bind(this);
     this.activateRestaurant = this.activateRestaurant.bind(this);
     this.assignManager = this.assignManager.bind(this);
+    this.getPlatformStats = this.getPlatformStats.bind(this);
+  }
+
+  async getPlatformStats(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const totalRestaurants = await Restaurant.countDocuments();
+      const activeRestaurants = await Restaurant.countDocuments({ isActive: true });
+      const suspendedRestaurants = await Restaurant.countDocuments({ isActive: false });
+
+      const totalOrders = await Order.countDocuments();
+
+      // Recent platform activity feed (last 10 orders and/or restaurants)
+      const recentRestaurants = await Restaurant.find().sort({ createdAt: -1 }).limit(5);
+      const recentOrders = await Order.find().sort({ createdAt: -1 }).limit(5).populate('restaurantId', 'name');
+
+      const activityFeed = [];
+
+      for (const rest of recentRestaurants) {
+        activityFeed.push({
+          type: 'RESTAURANT_CREATED',
+          message: `New restaurant tenant "${rest.name}" was registered on the platform.`,
+          timestamp: rest.createdAt,
+        });
+      }
+
+      for (const order of recentOrders) {
+        activityFeed.push({
+          type: 'ORDER_PLACED',
+          message: `Order #${order.orderNumber} placed at "${(order.restaurantId as any)?.name || 'Tenant'}" for ${new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(order.total / 100)}.`,
+          timestamp: order.createdAt,
+        });
+      }
+
+      // Sort combined activity feed chronologically descending
+      activityFeed.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      const stats = {
+        totalRestaurants,
+        activeRestaurants,
+        suspendedRestaurants,
+        totalOrders,
+        activityFeed: activityFeed.slice(0, 10),
+      };
+
+      sendSuccess(res, stats, 'Platform statistics retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
   }
 
   async createRestaurant(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -213,6 +264,19 @@ export class AdminController {
         });
         await newUser.save();
         targetUserId = newUser.id;
+
+        // Dispatch invite email asynchronously
+        try {
+          const clientUrl = process.env.CLIENT_URL || 'http://localhost:5173';
+          await EmailService.getInstance().sendManagerInvite(
+            email.toLowerCase().trim(),
+            name,
+            restaurant.name,
+            `${clientUrl}/login`
+          );
+        } catch (emailErr) {
+          logger.error(emailErr, 'Failed to send manager invite email during registration');
+        }
       } else {
         sendError(
           res,
