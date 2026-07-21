@@ -41,7 +41,7 @@ async function run() {
   });
 
   // Create Table
-  const table = await Table.create({
+  await Table.create({
     restaurantId: restaurant._id,
     tableNumber: '15',
     displayName: 'Table 15 (Terrace)',
@@ -59,7 +59,7 @@ async function run() {
     isActive: true,
   });
 
-  const categoryDrinks = await Category.create({
+  await Category.create({
     restaurantId: restaurant._id,
     name: 'Beverages',
     description: 'Refreshing craft drinks',
@@ -98,8 +98,8 @@ async function run() {
 
   console.log('Seed database filled successfully!');
 
-  // Now import and start Express server
-  const { httpServer } = require('./index');
+  // Now import and start Express server dynamically
+  const { httpServer } = await import('./index');
   httpServer.listen(5000, () => {
     console.log('Dev server running on http://localhost:5000');
   });

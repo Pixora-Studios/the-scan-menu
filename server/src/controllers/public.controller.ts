@@ -5,6 +5,7 @@ import { Category } from '../models/Category';
 import { MenuItem } from '../models/MenuItem';
 import { Order, OrderCounter } from '../models/Order';
 import { sendSuccess, sendError } from '../utils/response';
+import { SocketService } from '../sockets/socket.service';
 import mongoose from 'mongoose';
 
 export class PublicController {
@@ -264,6 +265,33 @@ export class PublicController {
       });
 
       await order.save();
+
+      // Emit order:created to restaurant:{restaurantId} room
+      try {
+        const io = SocketService.getInstance().getIO();
+        const orderSummary = {
+          _id: order._id,
+          restaurantId: order.restaurantId,
+          tableId: {
+            _id: table._id,
+            displayName: table.displayName,
+            tableNumber: table.tableNumber,
+          },
+          orderNumber: order.orderNumber,
+          items: order.items,
+          subtotal: order.subtotal,
+          tax: order.tax,
+          total: order.total,
+          customerNote: order.customerNote,
+          status: order.status,
+          source: order.source,
+          createdAt: order.createdAt,
+        };
+        io.to(`restaurant:${order.restaurantId.toString()}`).emit('order:created', orderSummary);
+      } catch (err) {
+        console.error('Failed to emit order:created socket event:', err);
+      }
+
       sendSuccess(res, order, 'Order placed successfully', 201);
     } catch (error) {
       next(error);
