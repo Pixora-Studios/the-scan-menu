@@ -14,10 +14,20 @@ if (process.env.NODE_ENV === 'test') {
   process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'test_access_secret_key_123_abc_456_def';
   process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'test_refresh_secret_key_123_abc_456_def';
   process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/pixora-qr-test';
+  process.env.CLOUDINARY_CLOUD_NAME = process.env.CLOUDINARY_CLOUD_NAME || 'mock_cloud_name';
+  process.env.CLOUDINARY_API_KEY = process.env.CLOUDINARY_API_KEY || '123456789012345';
+  process.env.CLOUDINARY_API_SECRET = process.env.CLOUDINARY_API_SECRET || 'mock_api_secret_abc123';
 }
 
 // Fail fast at startup if critical environment variables are missing
-const requiredEnv = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'MONGODB_URI'];
+const requiredEnv = [
+  'JWT_ACCESS_SECRET',
+  'JWT_REFRESH_SECRET',
+  'MONGODB_URI',
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET',
+];
 const missingEnv = requiredEnv.filter((envName) => !process.env[envName]);
 
 if (missingEnv.length > 0) {
@@ -28,6 +38,7 @@ if (missingEnv.length > 0) {
 
 import authRoutes from './routes/auth.routes';
 import adminRoutes from './routes/admin.routes';
+import menuRoutes from './routes/menu.routes';
 import restaurantRoutes from './routes/restaurant.routes';
 import publicRoutes from './routes/public.routes';
 import { errorHandler } from './middleware/errorHandler';
@@ -63,7 +74,11 @@ app.use(cookieParser());
 // Routing
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/admin', adminRoutes);
+
+// Mount menuRoutes BEFORE restaurantRoutes to prevent wildcard param collision clashing (:restaurantId matches categories-reorder etc.)
+app.use('/api/v1/restaurants', menuRoutes);
 app.use('/api/v1/restaurants', restaurantRoutes);
+
 app.use('/api/v1/public', publicRoutes);
 
 // Global Error Handler

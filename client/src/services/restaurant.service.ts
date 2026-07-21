@@ -40,6 +40,38 @@ export interface Table {
   updatedAt: string;
 }
 
+export interface AddOn {
+  name: string;
+  priceDelta: number;
+}
+
+export interface MenuItem {
+  _id: string;
+  restaurantId: string;
+  categoryId: string;
+  name: string;
+  description?: string;
+  price: number; // in cents/paise
+  imageUrl?: string;
+  isAvailable: boolean;
+  isVegetarian: boolean;
+  isSpicy: boolean;
+  prepTimeMinutes?: number;
+  sortOrder: number;
+  addOns?: AddOn[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicCategory {
+  _id: string;
+  name: string;
+  description?: string;
+  imageUrl?: string;
+  sortOrder: number;
+  menuItems: MenuItem[];
+}
+
 export interface PublicResolutionResponse {
   restaurant: Restaurant;
   table: Table;
@@ -137,6 +169,11 @@ export const managerService = {
 export const publicService = {
   async resolveTable(restaurantSlug: string, tableToken: string) {
     const res = await apiClient.get(`/public/restaurants/${restaurantSlug}/tables/${tableToken}`);
+    return res.data;
+  },
+
+  async getPublicMenu(restaurantSlug: string, tableToken: string) {
+    const res = await apiClient.get(`/public/restaurants/${restaurantSlug}/tables/${tableToken}/menu`);
     return res.data;
   },
 };

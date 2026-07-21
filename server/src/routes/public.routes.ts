@@ -5,5 +5,6 @@ const router = Router();
 const publicController = new PublicController();
 
 router.get('/restaurants/:restaurantSlug/tables/:tableToken', publicController.resolveTable);
+router.get('/restaurants/:restaurantSlug/tables/:tableToken/menu', publicController.getMenu);
 
 export default router;

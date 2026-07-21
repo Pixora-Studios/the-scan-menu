@@ -1,6 +1,6 @@
-# Pixora QR Platform — Phase 2 API Specification
+# Pixora QR Platform — API Specification
 
-This document details the HTTP endpoints added in Phase 2 for managing Restaurants, Tables, and generating secure QR Codes.
+This document details the HTTP endpoints for managing Restaurants, Tables, Categories, Menu Items, and generating secure QR Codes/Direct Uploads.
 
 ---
 
@@ -27,6 +27,48 @@ This document details the HTTP endpoints added in Phase 2 for managing Restauran
       "accentColor": "#F59E0B",
       "fontFamily": "Plus Jakarta Sans"
     }
+  }
+  ```
+
+---
+
+### 2. Get Public Menu
+Returns active categories sorted by `sortOrder` with their associated menu items nested (including both available and unavailable ones).
+- **Method:** `GET`
+- **Path:** `/api/v1/public/restaurants/:restaurantSlug/tables/:tableToken/menu`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "_id": "60d0fe...",
+        "name": "Sourdough Pizzas",
+        "description": "Hand-stretched sourdough pizzas",
+        "imageUrl": "https://res.cloudinary.com/...",
+        "sortOrder": 0,
+        "menuItems": [
+          {
+            "_id": "60d0fe...",
+            "restaurantId": "60d0fe...",
+            "categoryId": "60d0fe...",
+            "name": "Margherita Sourdough",
+            "description": "San Marzano tomatoes, fresh mozzarella, basil",
+            "price": 49900,
+            "imageUrl": "https://res.cloudinary.com/...",
+            "isAvailable": true,
+            "isVegetarian": true,
+            "isSpicy": false,
+            "prepTimeMinutes": 12,
+            "sortOrder": 0,
+            "addOns": [
+              { "name": "Extra Mozzarella", "priceDelta": 6000 }
+            ]
+          }
+        ]
+      }
+    ],
+    "message": "Public menu retrieved successfully"
   }
   ```
 - **Response (201 Created):**
@@ -197,6 +239,136 @@ Returns inline raw SVG markup and a secure PNG base64 data URI download payload 
       "url": "http://localhost:5173/r/woodfired-pizza/t/secureToken..."
     },
     "message": "QR retrieved successfully"
+  }
+  ```
+
+---
+
+## 🍽️ Categories & Menu Management Endpoints (Require MANAGER/SUPER_ADMIN role + requireRestaurantAccess check)
+
+### 1. List Categories
+- **Method:** `GET`
+- **Path:** `/api/v1/restaurants/:restaurantId/categories`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": [
+      {
+        "_id": "60d0fe...",
+        "restaurantId": "60d0fe...",
+        "name": "Sourdough Pizzas",
+        "description": "Hand-stretched sourdough pizzas",
+        "sortOrder": 0,
+        "isActive": true
+      }
+    ]
+  }
+  ```
+
+---
+
+### 2. Create Category
+- **Method:** `POST`
+- **Path:** `/api/v1/restaurants/:restaurantId/categories`
+- **Request Body:**
+  ```json
+  {
+    "name": "Sourdough Pizzas",
+    "description": "Woodfired pizzas",
+    "imageUrl": "https://res.cloudinary.com/..."
+  }
+  ```
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": { ... }
+  }
+  ```
+
+---
+
+### 3. Delete Category
+Blocks category deletion with a `409 Conflict` if the category has associated menu items.
+- **Method:** `DELETE`
+- **Path:** `/api/v1/restaurants/:restaurantId/categories/:categoryId`
+- **Response (409 Conflict):**
+  ```json
+  {
+    "success": false,
+    "error": {
+      "code": "CONFLICT",
+      "message": "Cannot delete category. There are 5 menu items inside this category. Please delete or move them first.",
+      "details": null
+    }
+  }
+  ```
+
+---
+
+### 4. Reorder Categories
+Accepts an ordered array of categoryIds to update sort orders in a single bulk operation.
+- **Method:** `PATCH`
+- **Path:** `/api/v1/restaurants/:restaurantId/categories-reorder`
+- **Request Body:**
+  ```json
+  {
+    "categoryIds": ["catId3", "catId1", "catId2"]
+  }
+  ```
+
+---
+
+### 5. Create Menu Item
+- **Method:** `POST`
+- **Path:** `/api/v1/restaurants/:restaurantId/menu-items`
+- **Request Body:**
+  ```json
+  {
+    "categoryId": "60d0fe...",
+    "name": "Margherita Sourdough",
+    "description": "San Marzano tomatoes, fresh mozzarella, basil",
+    "price": 49900, // Stored as integer cents/paise (499.00 INR)
+    "isVegetarian": true,
+    "isSpicy": false,
+    "prepTimeMinutes": 12,
+    "addOns": [
+      { "name": "Extra Mozzarella", "priceDelta": 6000 }
+    ]
+  }
+  ```
+
+---
+
+### 6. Bulk Update Availability
+- **Method:** `PATCH`
+- **Path:** `/api/v1/restaurants/:restaurantId/menu-items-bulk-availability`
+- **Request Body:**
+  ```json
+  {
+    "itemIds": ["id1", "id2", "id3"],
+    "isAvailable": false
+  }
+  ```
+
+---
+
+### 7. Fetch Upload Signature
+Generates direct Cloudinary secure signed signature. `CLOUDINARY_API_SECRET` stays strictly server-side.
+- **Method:** `POST`
+- **Path:** `/api/v1/restaurants/:restaurantId/uploads/signature`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "signature": "8a38b18ca7e...",
+      "timestamp": 1721494800,
+      "folder": "pixora-qr/60d0fe.../menu",
+      "apiKey": "123456789...",
+      "cloudName": "your-cloud-name"
+    }
   }
   ```
 
