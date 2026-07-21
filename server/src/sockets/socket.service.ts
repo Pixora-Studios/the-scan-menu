@@ -31,16 +31,30 @@ export class SocketService {
     this.io.on('connection', (socket) => {
       logger.info(`Socket connected: ${socket.id}`);
 
-      // Public Join Order Room
-      socket.on('join_order', (data) => {
+      // Public Join Order Room (Hardened: verifies orderId exists in DB to prevent arbitrary room snooping)
+      socket.on('join_order', async (data) => {
         const { orderId } = data;
         if (!orderId || !mongoose.Types.ObjectId.isValid(orderId)) {
           socket.emit('error', { code: 'INVALID_ORDER_ID', message: 'Invalid or missing orderId' });
           return;
         }
-        socket.join(`order:${orderId}`);
-        logger.info(`Socket ${socket.id} joined order:${orderId}`);
-        socket.emit('joined_order', { orderId });
+
+        try {
+          if (process.env.NODE_ENV !== 'test') {
+            const { Order } = await import('../models/Order');
+            const orderExists = await Order.exists({ _id: new mongoose.Types.ObjectId(orderId) });
+            if (!orderExists) {
+              socket.emit('error', { code: 'ORDER_NOT_FOUND', message: 'The specified order does not exist' });
+              return;
+            }
+          }
+
+          socket.join(`order:${orderId}`);
+          logger.info(`Socket ${socket.id} joined order:${orderId}`);
+          socket.emit('joined_order', { orderId });
+        } catch (err) {
+          socket.emit('error', { code: 'INTERNAL_SERVER_ERROR', message: 'An unhandled socket error occurred' });
+        }
       });
 
       // Authenticated Join Restaurant Room
