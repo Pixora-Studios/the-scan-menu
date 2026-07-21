@@ -32,6 +32,99 @@ This document details the HTTP endpoints for managing Restaurants, Tables, Categ
 
 ---
 
+## 🛎️ Waiter Calls Endpoints
+
+### 1. Request Waiter Assistance (Public, no auth)
+Tells floor service staff that help is required. Includes table snapshot and status tracking.
+- **Method:** `POST`
+- **Path:** `/api/v1/public/tables/:tableToken/waiter-call`
+- **Response (201 Created):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "_id": "60d0fe...",
+      "restaurantId": "60d0fe...",
+      "tableId": "60d0fe...",
+      "tableNumberSnapshot": "15",
+      "status": "PENDING"
+    },
+    "message": "Waiter called successfully"
+  }
+  ```
+- **Response (200 OK - On duplicate active request):**
+  Returns the existing active waiter call record instead of duplicating.
+  ```json
+  {
+    "success": true,
+    "data": { ... },
+    "message": "An active waiter call already exists for this table"
+  }
+  ```
+
+---
+
+### 2. Lookup Table Active Waiter Call (Public, no auth)
+Helper lookup endpoint to check if an active call is already open on load.
+- **Method:** `GET`
+- **Path:** `/api/v1/public/tables/:tableToken/waiter-call/active`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": { ... } // null if no open active call
+  }
+  ```
+
+---
+
+### 3. List Waiter Calls (Require Auth, requireRestaurantAccess check)
+- **Method:** `GET`
+- **Path:** `/api/v1/restaurants/:restaurantId/waiter-calls?page=1&limit=10&status=PENDING`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": {
+      "waiterCalls": [ ... ],
+      "pagination": {
+        "page": 1,
+        "limit": 10,
+        "total": 1,
+        "totalPages": 1
+      }
+    }
+  }
+  ```
+
+---
+
+### 4. Acknowledge Waiter Call (Require Auth, requireRestaurantAccess check)
+- **Method:** `PATCH`
+- **Path:** `/api/v1/restaurants/:restaurantId/waiter-calls/:callId/acknowledge`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": { "status": "ACKNOWLEDGED", "acknowledgedAt": "..." }
+  }
+  ```
+
+---
+
+### 5. Resolve Waiter Call (Require Auth, requireRestaurantAccess check)
+- **Method:** `PATCH`
+- **Path:** `/api/v1/restaurants/:restaurantId/waiter-calls/:callId/resolve`
+- **Response (200 OK):**
+  ```json
+  {
+    "success": true,
+    "data": { "status": "RESOLVED", "resolvedAt": "..." }
+  }
+  ```
+
+---
+
 ## 📦 Orders & Status Management Endpoints
 
 ### 1. Place a New Order (Public, no auth)

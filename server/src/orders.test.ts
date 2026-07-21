@@ -327,7 +327,6 @@ describe('Phase 5 Orders & State Machine Integration Tests', () => {
     // D. Verify MANAGER can cancel order
     const managerCancel = await request(app)
       .post(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/cancel`)
-      .set('Authorization', `Bearer={managerToken}`) // wait, standard auth header is `Bearer ${token}`
       .set('Authorization', `Bearer ${managerToken}`);
 
     expect(managerCancel.status).toBe(200);

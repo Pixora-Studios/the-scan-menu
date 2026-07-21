@@ -116,7 +116,32 @@ Fired when staff advances or cancels an order. Sent to both `order:{orderId}` an
   }
   ```
 
-#### 3. `error`
+#### 3. `waiter_call:created`
+Fired when a customer requests floor service assistance. Sent to room `restaurant:{restaurantId}`.
+- **Payload:**
+  ```json
+  {
+    "_id": "6640f0...",
+    "restaurantId": "6640f1...",
+    "tableId": "6640f2...",
+    "tableNumberSnapshot": "15",
+    "status": "PENDING",
+    "createdAt": "2026-07-21T09:30:10.000Z"
+  }
+  ```
+
+#### 4. `waiter_call:resolved`
+Fired when staff acknowledges or resolves a waiter call. Sent to room `restaurant:{restaurantId}`.
+- **Payload:**
+  ```json
+  {
+    "callId": "6640f0...",
+    "status": "RESOLVED",
+    "resolvedAt": "2026-07-21T09:32:00.000Z"
+  }
+  ```
+
+#### 5. `error`
 Generic error event emitted to the specific socket on failed validation.
 - **Payload:**
   ```json
