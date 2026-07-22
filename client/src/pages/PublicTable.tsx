@@ -929,35 +929,50 @@ export const PublicTable: React.FC = () => {
             <p className="text-xs text-slate-500">Verified platform testimonials from our guests.</p>
           </div>
 
-          <div className="space-y-4 pt-2">
-            {mockReviews.map((rev, idx) => (
-              <div key={idx} className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-3">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="font-bold text-slate-900">{rev.author}</span>
-                  <div className="flex gap-0.5 text-amber-500">
-                    {Array.from({ length: rev.rating }).map((_, i) => (
-                      <Star key={i} className="w-3.5 h-3.5 fill-current" strokeWidth={1.5} />
-                    ))}
+          <div className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none gap-4 pb-4 -mx-4 px-4 pt-2">
+            {mockReviews.map((rev, idx) => {
+              const colors = [
+                'bg-amber-100 text-amber-800',
+                'bg-indigo-100 text-indigo-800',
+                'bg-emerald-100 text-emerald-800',
+                'bg-rose-100 text-rose-800',
+              ];
+              const avatarColor = colors[idx % colors.length];
+              return (
+                <div
+                  key={idx}
+                  className="snap-center shrink-0 w-[85%] bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-3.5"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${avatarColor}`}>
+                      {rev.author.charAt(0)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-bold text-slate-900 text-xs block truncate">{rev.author}</span>
+                      <div className="flex gap-0.5 text-amber-500 mt-0.5">
+                        {Array.from({ length: rev.rating }).map((_, i) => (
+                          <Star key={i} className="w-3 h-3 fill-current" strokeWidth={1.5} />
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                  <p className="text-slate-600 text-xs leading-relaxed italic font-sans min-h-[48px]">
+                    "{rev.text}"
+                  </p>
                 </div>
-                <p className="text-slate-600 text-xs leading-relaxed italic font-sans">
-                  "{rev.text}"
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
-          {restaurant.googleReviewUrl && (
-            <a
-              href={restaurant.googleReviewUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full py-4 bg-white border-2 border-slate-950 text-slate-950 hover:bg-slate-50 font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-sm text-center"
-            >
-              <MessageSquare className="w-5 h-5 text-amber-500 fill-current" strokeWidth={1.75} />
-              <span>Submit Google Review</span>
-            </a>
-          )}
+          <a
+            href={restaurant.googleReviewUrl || `https://www.google.com/search?q=${encodeURIComponent(restaurant.name + ' reviews')}`}
+            target="_blank"
+            rel="noreferrer"
+            className="w-full py-4 bg-white border-2 border-slate-950 text-slate-950 hover:bg-slate-50 font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-sm text-center"
+          >
+            <MessageSquare className="w-5 h-5 text-amber-500 fill-current" strokeWidth={1.75} />
+            <span>Submit Google Review</span>
+          </a>
         </motion.div>
       )}
 
