@@ -356,7 +356,7 @@ export const ManagerOrders: React.FC = () => {
         </div>
 
         {/* TABLET / DESKTOP FULL MULTI-COLUMN KANBAN */}
-        <div className="hidden md:flex h-full p-6 gap-4 overflow-x-auto overflow-y-hidden select-none custom-scrollbar">
+        <div className="hidden md:grid xl:flex xl:h-full grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:flex-row p-6 gap-4 overflow-y-auto xl:overflow-y-hidden xl:overflow-x-auto select-none custom-scrollbar">
           {(['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'] as const).map((status) => {
             const list = getOrdersByStatus(status);
             const displayNames = {
@@ -367,7 +367,7 @@ export const ManagerOrders: React.FC = () => {
               SERVED: 'Served Today',
             };
             return (
-              <div key={status} className="flex-1 min-w-[240px] max-w-[320px] bg-slate-50/50 border border-slate-150 rounded-3xl flex flex-col overflow-hidden h-full">
+              <div key={status} className="flex-1 min-w-[200px] xl:max-w-[320px] bg-slate-50/50 border border-slate-150 rounded-3xl flex flex-col overflow-hidden h-[400px] xl:h-full">
 
                 {/* Column Header */}
                 <div className="p-4 border-b border-slate-150 flex items-center justify-between bg-white shrink-0">

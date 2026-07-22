@@ -231,7 +231,7 @@ export const ManagerSettings: React.FC = () => {
             <span>Core Contact Profiles</span>
           </h4>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Restaurant Name</label>
               <input
@@ -347,7 +347,7 @@ export const ManagerSettings: React.FC = () => {
             <span>Social Media Channels</span>
           </h4>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Facebook Profile</label>
               <input
@@ -389,7 +389,7 @@ export const ManagerSettings: React.FC = () => {
             <span>Payment Methods & Channels</span>
           </h4>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
             <label className="flex items-center gap-2.5 p-3.5 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50">
               <input
                 type="checkbox"
@@ -432,7 +432,7 @@ export const ManagerSettings: React.FC = () => {
           </div>
 
           {razorpayEnabled && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1.5">Razorpay Key ID</label>
                 <input
@@ -465,7 +465,7 @@ export const ManagerSettings: React.FC = () => {
             <span>Theme & Branding Colors</span>
           </h4>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {/* Primary Color */}
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-slate-600">Primary Color</label>

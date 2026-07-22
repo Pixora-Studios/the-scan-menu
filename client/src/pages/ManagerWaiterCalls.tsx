@@ -7,6 +7,10 @@ import {
   CheckCircle2,
   BellRing,
   Loader,
+  Droplet,
+  Layers,
+  HelpCircle,
+  FileText,
 } from 'lucide-react';
 import apiClient from '../lib/api';
 
@@ -16,8 +20,45 @@ interface WaiterCall {
   tableId: { displayName: string; tableNumber: string } | any;
   tableNumberSnapshot: string;
   status: 'PENDING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'CANCELLED';
+  requestType: 'CALL_WAITER' | 'REQUEST_BILL' | 'WATER' | 'TISSUE' | 'OTHER';
   createdAt: string;
 }
+
+const getRequestTypeDetails = (type: string) => {
+  switch (type) {
+    case 'REQUEST_BILL':
+      return {
+        label: 'Bill Request',
+        badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-100',
+        icon: <FileText className="w-4.5 h-4.5 text-emerald-600" strokeWidth={1.75} />,
+      };
+    case 'WATER':
+      return {
+        label: 'Bring Water',
+        badgeClass: 'bg-sky-50 text-sky-800 border-sky-100',
+        icon: <Droplet className="w-4.5 h-4.5 text-sky-600" strokeWidth={1.75} />,
+      };
+    case 'TISSUE':
+      return {
+        label: 'Bring Tissues',
+        badgeClass: 'bg-slate-100 text-slate-800 border-slate-200',
+        icon: <Layers className="w-4.5 h-4.5 text-slate-600" strokeWidth={1.75} />,
+      };
+    case 'OTHER':
+      return {
+        label: 'Other Help',
+        badgeClass: 'bg-purple-50 text-purple-800 border-purple-150',
+        icon: <HelpCircle className="w-4.5 h-4.5 text-purple-600" strokeWidth={1.75} />,
+      };
+    case 'CALL_WAITER':
+    default:
+      return {
+        label: 'Call Waiter',
+        badgeClass: 'bg-amber-50 text-amber-800 border-amber-100',
+        icon: <BellRing className="w-4.5 h-4.5 text-amber-600" strokeWidth={1.75} />,
+      };
+  }
+};
 
 export const ManagerWaiterCalls: React.FC = () => {
   const { user } = useAuth();
@@ -118,6 +159,7 @@ export const ManagerWaiterCalls: React.FC = () => {
           <AnimatePresence mode="popLayout">
             {activeWaiterCalls.map((call: WaiterCall) => {
               const isPending = call.status === 'PENDING';
+              const details = getRequestTypeDetails(call.requestType || 'CALL_WAITER');
               return (
                 <motion.div
                   key={call._id}
@@ -132,15 +174,18 @@ export const ManagerWaiterCalls: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2.5 rounded-xl shrink-0 ${
-                        isPending ? 'bg-amber-100 text-amber-600 animate-pulse' : 'bg-slate-200 text-slate-500'
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`p-2.5 rounded-xl shrink-0 flex items-center justify-center ${
+                        isPending ? 'bg-amber-100 animate-pulse' : 'bg-slate-200'
                       }`}>
-                        <BellRing className="w-5 h-5" strokeWidth={1.75} />
+                        {details.icon}
                       </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">
-                          Table {call.tableNumberSnapshot}
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-extrabold text-slate-900 flex items-center gap-2 flex-wrap">
+                          <span>Table {call.tableNumberSnapshot}</span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${details.badgeClass}`}>
+                            <span>{details.label}</span>
+                          </span>
                         </h4>
                         <p className="text-[10px] text-slate-500 font-mono mt-0.5">
                           Requested: {new Date(call.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -148,8 +193,8 @@ export const ManagerWaiterCalls: React.FC = () => {
                       </div>
                     </div>
 
-                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold font-mono tracking-wider uppercase ${
-                      isPending ? 'bg-amber-200 text-amber-800' : 'bg-slate-200 text-slate-600'
+                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold font-mono tracking-wider uppercase shrink-0 ${
+                      isPending ? 'bg-amber-200 text-amber-800 border border-amber-300' : 'bg-slate-200 text-slate-600 border border-slate-300'
                     }`}>
                       {call.status}
                     </span>

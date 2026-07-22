@@ -246,7 +246,7 @@ export const AdminRestaurants: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-6 py-8 space-y-8 overflow-y-auto">
 
         {/* 1. Statistics Summary */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white border border-slate-150 rounded-3xl p-5 shadow-sm flex flex-col justify-between">
             <div className="flex justify-between items-center text-slate-400">
               <span className="text-xs font-extrabold uppercase tracking-wider">Total Tenants</span>
@@ -318,7 +318,7 @@ export const AdminRestaurants: React.FC = () => {
               </div>
 
               {/* Advanced search and filter panel */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-slate-100 pt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 border-t border-slate-100 pt-4">
                 <div>
                   <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Search Name / Slug</label>
                   <input
@@ -546,7 +546,7 @@ export const AdminRestaurants: React.FC = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-600 mb-1">Phone</label>
                   <input
@@ -597,7 +597,7 @@ export const AdminRestaurants: React.FC = () => {
               {/* Subscription settings (Only visible/editable for Super Admins) */}
               <div className="bg-slate-50 p-4 border border-slate-150 rounded-2xl space-y-3">
                 <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Subscription Plan Settings</h4>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-[10px] font-semibold text-slate-600 mb-1">Status</label>
                     <select
