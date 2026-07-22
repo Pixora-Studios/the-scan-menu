@@ -705,6 +705,31 @@ export const ManagerOrders: React.FC = () => {
             <User className="w-4 h-4" strokeWidth={1.75} />
             <span>Profile</span>
           </button>
+
+          {/* Coming Soon Seam Dividers */}
+          <div className="border-t border-slate-150 my-3 pt-3">
+            <p className="text-[9px] text-slate-400 font-extrabold font-mono uppercase tracking-widest px-4 mb-2">Coming Soon (v2)</p>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <Settings className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>POS Integrations</span>
+            </div>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <BarChart3 className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>Inventory Logs</span>
+            </div>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <ChefHat className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>Kitchen Display (KDS)</span>
+            </div>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <Clock className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>Reservations</span>
+            </div>
+          </div>
         </nav>
 
         {/* User Footnote */}

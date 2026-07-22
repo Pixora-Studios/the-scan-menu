@@ -26,6 +26,32 @@ This document details the HTTP endpoints for managing Restaurants, Tables, Categ
       "secondaryColor": "#FFFFFF",
       "accentColor": "#F59E0B",
       "fontFamily": "Plus Jakarta Sans"
+    },
+    "gstNumber": "27AAAAA1111A1Z1",
+    "whatsapp": "+91 9876543210",
+    "timings": {
+      "open": "09:00",
+      "close": "23:00"
+    },
+    "socialLinks": {
+      "facebook": "https://facebook.com/woodfired",
+      "instagram": "https://instagram.com/woodfired",
+      "twitter": "https://twitter.com/woodfired"
+    },
+    "paymentMethods": {
+      "cash": true,
+      "card": true,
+      "upi": true,
+      "razorpay": false
+    },
+    "razorpayConfig": {
+      "keyId": "rzp_test_...",
+      "keySecret": "..."
+    },
+    "subscription": {
+      "status": "ACTIVE",
+      "planType": "PREMIUM",
+      "expiresAt": "2026-12-31T23:59:59.000Z"
     }
   }
   ```
