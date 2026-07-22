@@ -8,6 +8,7 @@ export interface IUser extends Document {
   role: UserRole;
   name: string;
   isActive: boolean;
+  pin?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,6 +40,10 @@ const userSchema = new Schema<IUser>(
       type: Boolean,
       required: true,
       default: true,
+    },
+    pin: {
+      type: String,
+      trim: true,
     },
   },
   {

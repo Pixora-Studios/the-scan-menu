@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
@@ -68,8 +69,17 @@ interface WaiterCall {
   tableId: { displayName: string; tableNumber: string } | any;
   tableNumberSnapshot: string;
   status: 'PENDING' | 'ACKNOWLEDGED' | 'RESOLVED' | 'CANCELLED';
+  requestType: 'CALL_WAITER' | 'REQUEST_BILL' | 'WATER' | 'TISSUE' | 'OTHER';
   createdAt: string;
 }
+
+const waiterCallTypeDetails: Record<string, { label: string; bg: string; text: string }> = {
+  CALL_WAITER: { label: 'Call Waiter', bg: 'bg-indigo-50 border-indigo-100', text: 'text-indigo-700' },
+  REQUEST_BILL: { label: 'Request Bill', bg: 'bg-emerald-50 border-emerald-100', text: 'text-emerald-700' },
+  WATER: { label: 'Bring Water', bg: 'bg-blue-50 border-blue-100', text: 'text-blue-700' },
+  TISSUE: { label: 'Need Tissue', bg: 'bg-amber-50 border-amber-100', text: 'text-amber-700' },
+  OTHER: { label: 'Other Help', bg: 'bg-purple-50 border-purple-100', text: 'text-purple-700' },
+};
 
 // Helper to calculate elapsed time friendly text
 const getElapsedTimeLabel = (createdAt: string, now: Date) => {
@@ -91,9 +101,6 @@ export const ManagerOrders: React.FC = () => {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  // Primary navigation tab (extended for Phase 10)
-  const [activeTab, setActiveTab] = useState<'orders' | 'waiter-calls' | 'menu' | 'tables' | 'settings' | 'analytics' | 'profile'>('orders');
 
   // Mobile sub-status tab switcher state
   const [mobileStatusTab, setMobileStatusTab] = useState<'PENDING' | 'ACCEPTED' | 'PREPARING' | 'READY' | 'SERVED'>('PENDING');
@@ -121,12 +128,25 @@ export const ManagerOrders: React.FC = () => {
   const activeRestaurantId = user?.restaurants?.[0];
   const isStaff = user?.role === 'STAFF';
 
-  // State-level role protection: Redirect staff away from admin sections
-  useEffect(() => {
-    if (isStaff && (activeTab === 'menu' || activeTab === 'tables' || activeTab === 'settings' || activeTab === 'analytics')) {
-      setActiveTab('orders');
+  // Deep linking tabs using Search Parameters
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawActiveTab = searchParams.get('tab') || 'orders';
+
+  // State-level role protection helper
+  const getSanitizedTab = (tab: string): 'orders' | 'waiter-calls' | 'menu' | 'tables' | 'settings' | 'analytics' | 'profile' => {
+    const validTabs = ['orders', 'waiter-calls', 'menu', 'tables', 'settings', 'analytics', 'profile'];
+    const resolvedTab = validTabs.includes(tab) ? tab : 'orders';
+    if (isStaff && ['menu', 'tables', 'settings', 'analytics'].includes(resolvedTab)) {
+      return 'orders';
     }
-  }, [activeTab, isStaff]);
+    return resolvedTab as any;
+  };
+
+  const activeTab = getSanitizedTab(rawActiveTab);
+
+  const setActiveTab = (tab: string) => {
+    setSearchParams({ tab });
+  };
 
   // Fetch Live socket status
   const token = localStorage.getItem('accessToken');
@@ -705,6 +725,42 @@ export const ManagerOrders: React.FC = () => {
             <User className="w-4 h-4" strokeWidth={1.75} />
             <span>Profile</span>
           </button>
+
+          {/* Super Admin Console */}
+          {user?.role === 'SUPER_ADMIN' && (
+            <Link
+              to="/admin/restaurants"
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-2xl text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all"
+            >
+              <Shield className="w-4 h-4 text-amber-500" strokeWidth={1.75} />
+              <span>SuperAdmin Console</span>
+            </Link>
+          )}
+
+          {/* Coming Soon Seam Dividers */}
+          <div className="border-t border-slate-150 my-3 pt-3">
+            <p className="text-[9px] text-slate-400 font-extrabold font-mono uppercase tracking-widest px-4 mb-2">Coming Soon (v2)</p>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <Settings className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>POS Integrations</span>
+            </div>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <BarChart3 className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>Inventory Logs</span>
+            </div>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <ChefHat className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>Kitchen Display (KDS)</span>
+            </div>
+
+            <div className="flex items-center gap-3 w-full px-4 py-2.5 text-xs font-bold text-slate-400 cursor-not-allowed select-none opacity-60">
+              <Clock className="w-3.5 h-3.5" strokeWidth={1.75} />
+              <span>Reservations</span>
+            </div>
+          </div>
         </nav>
 
         {/* User Footnote */}
@@ -1011,10 +1067,21 @@ export const ManagerOrders: React.FC = () => {
                                   <BellRing className="w-5 h-5" strokeWidth={1.75} />
                                 </div>
                                 <div>
-                                  <h4 className="text-sm font-extrabold text-slate-900">
-                                    Table {call.tableNumberSnapshot}
-                                  </h4>
-                                  <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <h4 className="text-sm font-extrabold text-slate-900">
+                                      Table {call.tableNumberSnapshot}
+                                    </h4>
+                                    {call.requestType && (
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
+                                        waiterCallTypeDetails[call.requestType]?.bg || 'bg-slate-100 border-slate-200'
+                                      } ${
+                                        waiterCallTypeDetails[call.requestType]?.text || 'text-slate-700'
+                                      }`}>
+                                        {waiterCallTypeDetails[call.requestType]?.label || call.requestType}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 font-mono mt-1">
                                     Requested: {new Date(call.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                   </p>
                                 </div>
