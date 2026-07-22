@@ -407,27 +407,29 @@ export const AdminRestaurants: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="border-t border-slate-100 pt-3 mt-4 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-600">
-                      <button
-                        onClick={() => handleEditClick(rest)}
-                        className="flex items-center gap-1 hover:text-slate-900 transition p-1"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" strokeWidth={1.75} />
-                        <span>Edit</span>
-                      </button>
+                    <div className="border-t border-slate-100 pt-3 mt-4 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-600">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          onClick={() => handleEditClick(rest)}
+                          className="flex items-center gap-1 hover:text-slate-900 transition p-1"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          <span>Edit</span>
+                        </button>
 
-                      <button
-                        onClick={() => setAssigningRestId(rest._id)}
-                        className="flex items-center gap-1 text-amber-600 hover:text-amber-800 transition p-1 ml-2"
-                      >
-                        <UserPlus className="w-3.5 h-3.5" strokeWidth={1.75} />
-                        <span>Add Manager</span>
-                      </button>
+                        <button
+                          onClick={() => setAssigningRestId(rest._id)}
+                          className="flex items-center gap-1 text-amber-600 hover:text-amber-800 transition p-1"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          <span>Add Manager</span>
+                        </button>
+                      </div>
 
                       {rest.isActive ? (
                         <button
                           onClick={() => suspendMutation.mutate(rest._id)}
-                          className="flex items-center gap-1 text-red-500 hover:text-red-700 transition p-1 ml-auto"
+                          className="flex items-center gap-1 text-red-500 hover:text-red-700 transition p-1"
                         >
                           <ShieldAlert className="w-3.5 h-3.5" strokeWidth={1.75} />
                           <span>Suspend</span>
@@ -435,7 +437,7 @@ export const AdminRestaurants: React.FC = () => {
                       ) : (
                         <button
                           onClick={() => activateMutation.mutate(rest._id)}
-                          className="flex items-center gap-1 text-green-600 hover:text-green-800 transition p-1 ml-auto"
+                          className="flex items-center gap-1 text-green-600 hover:text-green-800 transition p-1"
                         >
                           <CheckCircle className="w-3.5 h-3.5" strokeWidth={1.75} />
                           <span>Activate</span>

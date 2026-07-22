@@ -356,7 +356,7 @@ export const ManagerOrders: React.FC = () => {
         </div>
 
         {/* TABLET / DESKTOP FULL MULTI-COLUMN KANBAN */}
-        <div className="hidden md:flex h-full p-6 gap-4 overflow-x-auto overflow-y-hidden select-none">
+        <div className="hidden md:flex h-full p-6 gap-4 overflow-x-auto overflow-y-hidden select-none custom-scrollbar">
           {(['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'] as const).map((status) => {
             const list = getOrdersByStatus(status);
             const displayNames = {

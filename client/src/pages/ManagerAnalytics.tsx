@@ -669,7 +669,7 @@ export const ManagerAnalytics: React.FC = () => {
                 No active dining tables recorded inside this range.
               </div>
             ) : (
-              <div className="overflow-x-auto scrollbar-none">
+              <div className="overflow-x-auto custom-scrollbar pb-2">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-150 text-slate-400 font-bold uppercase tracking-wider text-[10px]">

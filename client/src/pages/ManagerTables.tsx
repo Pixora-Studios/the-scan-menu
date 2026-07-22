@@ -310,7 +310,7 @@ export const ManagerTables: React.FC = () => {
                 <p className="text-xs text-slate-500 font-mono mb-4 break-all">Token: {table.token}</p>
               </div>
 
-              <div className="border-t border-slate-50 pt-4 mt-auto flex items-center justify-between gap-2">
+              <div className="border-t border-slate-50 pt-4 mt-auto flex flex-wrap items-center justify-between gap-2 gap-y-3">
                 <button
                   onClick={() => handleEditClick(table)}
                   className="flex items-center gap-1 text-xs font-semibold text-slate-600 hover:text-primary hover:underline transition animate-none"

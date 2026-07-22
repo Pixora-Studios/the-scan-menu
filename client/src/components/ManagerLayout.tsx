@@ -406,16 +406,16 @@ export const ManagerLayout: React.FC = () => {
       </div>
 
       {/* ----------------- BOTTOM BAR (MOBILE ONLY) ----------------- */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-150 flex items-center justify-around px-4 pb-safe z-40 shadow-lg">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-150 flex items-center justify-around px-2 pb-safe z-40 shadow-lg">
         {/* Orders */}
         <button
           onClick={() => navigate('/manager/orders')}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full relative transition-all ${
+          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full relative transition-all min-w-0 ${
             activeTab === 'orders' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
           <Receipt className="w-5 h-5" strokeWidth={1.75} />
-          <span className="text-[10px] leading-none">Orders</span>
+          <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Orders</span>
           {activeOrdersCount > 0 && (
             <span className="absolute top-2 right-1/4 px-1.5 py-0.5 text-[8px] bg-amber-500 text-slate-950 rounded-full font-bold font-mono border border-white">
               {activeOrdersCount}
@@ -426,12 +426,12 @@ export const ManagerLayout: React.FC = () => {
         {/* Waiter Calls */}
         <button
           onClick={() => navigate('/manager/waiter-calls')}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full relative transition-all ${
+          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full relative transition-all min-w-0 ${
             activeTab === 'waiter-calls' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
           <Bell className="w-5 h-5" strokeWidth={1.75} />
-          <span className="text-[10px] leading-none">Waiter Calls</span>
+          <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Waiter Calls</span>
           {activeWaiterCallsCount > 0 && (
             <span className="absolute top-2 right-1/4 px-1.5 py-0.5 text-[8px] bg-amber-500 text-slate-950 rounded-full font-bold font-mono border border-white animate-pulse">
               {activeWaiterCallsCount}
@@ -443,12 +443,12 @@ export const ManagerLayout: React.FC = () => {
         {!isStaff && (
           <button
             onClick={() => navigate('/manager/menu')}
-            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all min-w-0 ${
               activeTab === 'menu' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
             }`}
           >
             <BookOpen className="w-5 h-5" strokeWidth={1.75} />
-            <span className="text-[9px] leading-none">Menu</span>
+            <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Menu</span>
           </button>
         )}
 
@@ -456,12 +456,12 @@ export const ManagerLayout: React.FC = () => {
         {!isStaff && (
           <button
             onClick={() => navigate('/manager/tables')}
-            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all min-w-0 ${
               activeTab === 'tables' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
             }`}
           >
             <TableProperties className="w-5 h-5" strokeWidth={1.75} />
-            <span className="text-[9px] leading-none">Tables</span>
+            <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Tables</span>
           </button>
         )}
 
@@ -469,12 +469,12 @@ export const ManagerLayout: React.FC = () => {
         {!isStaff && (
           <button
             onClick={() => navigate('/manager/settings')}
-            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all min-w-0 ${
               activeTab === 'settings' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
             }`}
           >
             <Settings className="w-5 h-5" strokeWidth={1.75} />
-            <span className="text-[9px] leading-none">Settings</span>
+            <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Settings</span>
           </button>
         )}
 
@@ -482,24 +482,24 @@ export const ManagerLayout: React.FC = () => {
         {!isStaff && (
           <button
             onClick={() => navigate('/manager/analytics')}
-            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+            className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all min-w-0 ${
               activeTab === 'analytics' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
             }`}
           >
             <BarChart3 className="w-5 h-5" strokeWidth={1.75} />
-            <span className="text-[9px] leading-none">Analytics</span>
+            <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Analytics</span>
           </button>
         )}
 
         {/* Profile */}
         <button
           onClick={() => navigate('/manager/profile')}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
+          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all min-w-0 ${
             activeTab === 'profile' ? 'text-slate-950 font-bold' : 'text-slate-400 font-medium'
           }`}
         >
           <User className="w-5 h-5" strokeWidth={1.75} />
-          <span className="text-[10px] leading-none">Profile</span>
+          <span className="text-[9px] min-[375px]:text-[10px] truncate w-full text-center leading-none px-0.5">Profile</span>
         </button>
       </nav>
     </div>

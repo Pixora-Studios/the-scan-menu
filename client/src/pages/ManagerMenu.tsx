@@ -479,7 +479,7 @@ export const ManagerMenu: React.FC = () => {
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEndCategories}>
               <SortableContext items={categories.map((c: any) => c._id)} strategy={verticalListSortingStrategy}>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-60 md:max-h-[calc(100vh-280px)] overflow-y-auto custom-scrollbar p-1">
                   {categories.map((cat: any) => (
                     <SortableItem key={cat._id} id={cat._id}>
                       {({ dragHandleProps }) => (
@@ -531,7 +531,7 @@ export const ManagerMenu: React.FC = () => {
         </div>
 
         {/* Right Side: Menu Items Panel */}
-        <div className="md:col-span-3 space-y-6 bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+        <div className="md:col-span-3 space-y-6 bg-white rounded-2xl border border-slate-100 p-4 md:p-6 shadow-sm">
           <div className="flex justify-between items-center border-b border-slate-50 pb-4 flex-wrap gap-4">
             <div>
               <h2 className="font-display tracking-tight text-3xl font-semibold text-slate-900">
@@ -628,7 +628,7 @@ export const ManagerMenu: React.FC = () => {
                       {({ dragHandleProps }) => (
                         <div
                           onClick={() => bulkMode && toggleBulkSelectItem(item._id)}
-                          className={`relative border rounded-2xl p-4 flex gap-4 transition-all ${
+                          className={`relative border rounded-2xl p-3.5 sm:p-4 flex gap-3 sm:gap-4 transition-all ${
                             bulkMode && selectedItemIds.includes(item._id)
                               ? 'border-amber-400 bg-amber-50/10 shadow-inner'
                               : 'border-slate-100 bg-white hover:shadow-sm'
