@@ -7,6 +7,7 @@ export interface IWaiterCall extends Document {
   tableId: Types.ObjectId;
   tableNumberSnapshot: string;
   status: WaiterCallStatus;
+  requestType: 'CALL_WAITER' | 'REQUEST_BILL' | 'WATER' | 'TISSUE' | 'OTHER';
   createdAt: Date;
   updatedAt: Date;
   acknowledgedAt?: Date;
@@ -24,6 +25,12 @@ const waiterCallSchema = new Schema<IWaiterCall>(
       required: true,
       enum: ['PENDING', 'ACKNOWLEDGED', 'RESOLVED', 'CANCELLED'],
       default: 'PENDING',
+    },
+    requestType: {
+      type: String,
+      required: true,
+      enum: ['CALL_WAITER', 'REQUEST_BILL', 'WATER', 'TISSUE', 'OTHER'],
+      default: 'CALL_WAITER',
     },
     acknowledgedAt: { type: Date },
     resolvedAt: { type: Date },

@@ -55,12 +55,15 @@ export class WaiterCallController {
         return;
       }
 
+      const { requestType } = req.body;
+
       // 3. Create Waiter Call
       const waiterCall = new WaiterCall({
         restaurantId: restaurant._id,
         tableId: table._id,
         tableNumberSnapshot: table.tableNumber,
         status: 'PENDING',
+        requestType: requestType || 'CALL_WAITER',
       });
 
       await waiterCall.save();
@@ -73,6 +76,7 @@ export class WaiterCallController {
           tableId: waiterCall.tableId,
           tableNumberSnapshot: waiterCall.tableNumberSnapshot,
           status: waiterCall.status,
+          requestType: waiterCall.requestType,
           createdAt: waiterCall.createdAt,
         };
         NotificationService.getInstance().notifyWaiterCallCreated(restaurant._id.toString(), payload);

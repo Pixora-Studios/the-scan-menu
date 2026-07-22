@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -30,6 +31,11 @@ const restaurantSchema = z.object({
   email: z.string().email('Invalid email').or(z.literal('')),
   address: z.string().optional(),
   googleReviewUrl: z.string().optional(),
+  subscription: z.object({
+    status: z.enum(['ACTIVE', 'EXPIRED', 'TRIAL']),
+    planType: z.enum(['STARTER', 'PREMIUM', 'ENTERPRISE']),
+    expiresAt: z.string(),
+  }).optional(),
 });
 
 const managerSchema = z.object({
@@ -50,6 +56,11 @@ export const AdminRestaurants: React.FC = () => {
   const [assigningRestId, setAssigningRestId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Search and filter states
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'SUSPENDED'>('ALL');
+  const [subscriptionFilter, setSubscriptionFilter] = useState<'ALL' | 'ACTIVE' | 'EXPIRED' | 'TRIAL'>('ALL');
+
   // Fetch stats
   const { data: statsResponse, isLoading: isLoadingStats } = useQuery({
     queryKey: ['adminStats'],
@@ -62,7 +73,24 @@ export const AdminRestaurants: React.FC = () => {
     queryFn: () => adminService.listRestaurants(1, 100),
   });
 
-  const restaurants = restResponse?.data?.restaurants || [];
+  const restaurantsRaw = restResponse?.data?.restaurants || [];
+
+  // Filtered restaurants
+  const restaurants = restaurantsRaw.filter((rest: any) => {
+    const matchesSearch = rest.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (rest.slug && rest.slug.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (rest.email && rest.email.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    const matchesStatus = statusFilter === 'ALL' ||
+                          (statusFilter === 'ACTIVE' && rest.isActive) ||
+                          (statusFilter === 'SUSPENDED' && !rest.isActive);
+
+    const matchesSub = subscriptionFilter === 'ALL' ||
+                        (rest.subscription && rest.subscription.status === subscriptionFilter);
+
+    return matchesSearch && matchesStatus && matchesSub;
+  });
+
   const stats = statsResponse?.data || {
     totalRestaurants: 0,
     activeRestaurants: 0,
@@ -164,7 +192,7 @@ export const AdminRestaurants: React.FC = () => {
     }
   };
 
-  const handleEditClick = (rest: Restaurant) => {
+  const handleEditClick = (rest: any) => {
     setEditingRest(rest);
     restForm.reset({
       name: rest.name,
@@ -174,6 +202,15 @@ export const AdminRestaurants: React.FC = () => {
       email: rest.email || '',
       address: rest.address || '',
       googleReviewUrl: rest.googleReviewUrl || '',
+      subscription: rest.subscription ? {
+        status: rest.subscription.status,
+        planType: rest.subscription.planType,
+        expiresAt: rest.subscription.expiresAt ? new Date(rest.subscription.expiresAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      } : {
+        status: 'TRIAL',
+        planType: 'STARTER',
+        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      },
     });
     setIsCreateOpen(true);
   };
@@ -197,13 +234,21 @@ export const AdminRestaurants: React.FC = () => {
           </h1>
         </div>
 
-        <button
-          onClick={logout}
-          className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-red-600 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-red-50 transition"
-        >
-          <LogOut className="w-4 h-4" strokeWidth={1.75} />
-          <span>Platform Log Out</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/manager/orders"
+            className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 transition"
+          >
+            <span>Operations Dashboard</span>
+          </Link>
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-red-600 px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-red-50 transition"
+          >
+            <LogOut className="w-4 h-4" strokeWidth={1.75} />
+            <span>Platform Log Out</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content Layout */}
@@ -249,39 +294,87 @@ export const AdminRestaurants: React.FC = () => {
 
           {/* Restaurant list panel (2/3 width) */}
           <div className="lg:col-span-2 space-y-5">
-            <div className="flex justify-between items-center bg-white border border-slate-150 p-4 rounded-2xl shadow-sm">
-              <div>
-                <h2 className="text-base font-extrabold text-slate-900">Registered Restaurant Tenants</h2>
-                <p className="text-[11px] text-slate-500">Add, configure, suspend, or assign managers inline.</p>
+            <div className="bg-white border border-slate-150 p-5 rounded-2xl shadow-sm space-y-4">
+              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">Registered Restaurant Tenants</h2>
+                  <p className="text-[11px] text-slate-500">Add, configure, suspend, or assign managers inline.</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setEditingRest(null);
+                    restForm.reset({
+                      name: '',
+                      slug: '',
+                      description: '',
+                      phone: '',
+                      email: '',
+                      address: '',
+                      googleReviewUrl: '',
+                      subscription: {
+                        status: 'TRIAL',
+                        planType: 'STARTER',
+                        expiresAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                      },
+                    });
+                    setIsCreateOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm border border-slate-950 shrink-0 self-start"
+                >
+                  <Plus className="w-4 h-4" strokeWidth={1.75} />
+                  <span>Register Tenant</span>
+                </button>
               </div>
-              <button
-                onClick={() => {
-                  setEditingRest(null);
-                  restForm.reset({
-                    name: '',
-                    slug: '',
-                    description: '',
-                    phone: '',
-                    email: '',
-                    address: '',
-                    googleReviewUrl: '',
-                  });
-                  setIsCreateOpen(true);
-                }}
-                className="flex items-center gap-1.5 bg-slate-950 hover:bg-slate-800 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-sm border border-slate-950"
-              >
-                <Plus className="w-4 h-4" strokeWidth={1.75} />
-                <span>Register Tenant</span>
-              </button>
+
+              {/* Advanced search and filter panel */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-slate-100 pt-4">
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Search Name / Slug</label>
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search cafes, bistros..."
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Platform Status</label>
+                  <select
+                    value={statusFilter}
+                    onChange={(e: any) => setStatusFilter(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-amber-500 bg-white"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="ACTIVE">Active Only</option>
+                    <option value="SUSPENDED">Suspended Only</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-1.5">Subscription Plan</label>
+                  <select
+                    value={subscriptionFilter}
+                    onChange={(e: any) => setSubscriptionFilter(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-amber-500 bg-white"
+                  >
+                    <option value="ALL">All Subscriptions</option>
+                    <option value="ACTIVE">Active Subscriptions</option>
+                    <option value="TRIAL">Trial Plans</option>
+                    <option value="EXPIRED">Expired Subscriptions</option>
+                  </select>
+                </div>
+              </div>
             </div>
 
             {restaurants.length === 0 ? (
               <div className="bg-white p-12 rounded-3xl border border-slate-150 text-center text-slate-400">
-                No restaurants found on this platform.
+                No restaurants matching filters found on this platform.
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {restaurants.map((rest: Restaurant) => (
+                {restaurants.map((rest: Restaurant | any) => (
                   <div
                     key={rest._id}
                     className="bg-white rounded-3xl border border-slate-150 p-5 shadow-sm flex flex-col justify-between hover:shadow transition"
@@ -303,6 +396,24 @@ export const AdminRestaurants: React.FC = () => {
                       <p className="text-xs text-slate-500 line-clamp-2 mt-2 leading-relaxed">
                         {rest.description || 'No description provided.'}
                       </p>
+
+                      {/* Subscription Badges */}
+                      {rest.subscription && (
+                        <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                          <span className={`text-[9px] font-extrabold font-mono uppercase tracking-widest px-2 py-0.5 rounded border ${
+                            rest.subscription.status === 'ACTIVE'
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                              : rest.subscription.status === 'TRIAL'
+                              ? 'bg-amber-50 text-amber-700 border-amber-100'
+                              : 'bg-red-50 text-red-700 border-red-100'
+                          }`}>
+                            {rest.subscription.planType} • {rest.subscription.status}
+                          </span>
+                          <span className="text-[9px] font-medium text-slate-400 font-mono shrink-0">
+                            Exp: {new Date(rest.subscription.expiresAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="border-t border-slate-100 pt-3 mt-4 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-600">
@@ -488,6 +599,45 @@ export const AdminRestaurants: React.FC = () => {
                   {...restForm.register('googleReviewUrl')}
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500"
                 />
+              </div>
+
+              {/* Subscription settings (Only visible/editable for Super Admins) */}
+              <div className="bg-slate-50 p-4 border border-slate-150 rounded-2xl space-y-3">
+                <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">Subscription Plan Settings</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Status</label>
+                    <select
+                      {...restForm.register('subscription.status')}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white"
+                    >
+                      <option value="ACTIVE">ACTIVE</option>
+                      <option value="TRIAL">TRIAL</option>
+                      <option value="EXPIRED">EXPIRED</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Plan Type</label>
+                    <select
+                      {...restForm.register('subscription.planType')}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs bg-white"
+                    >
+                      <option value="STARTER">STARTER</option>
+                      <option value="PREMIUM">PREMIUM</option>
+                      <option value="ENTERPRISE">ENTERPRISE</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-1">Expires At</label>
+                    <input
+                      type="date"
+                      {...restForm.register('subscription.expiresAt')}
+                      className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-xs"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-3 pt-4">

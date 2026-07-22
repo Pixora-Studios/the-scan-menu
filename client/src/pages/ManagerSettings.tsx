@@ -19,6 +19,27 @@ interface RestaurantProfile {
   email?: string;
   address?: string;
   googleReviewUrl?: string;
+  gstNumber?: string;
+  whatsapp?: string;
+  timings?: {
+    open: string;
+    close: string;
+  };
+  socialLinks?: {
+    facebook?: string;
+    instagram?: string;
+    twitter?: string;
+  };
+  paymentMethods?: {
+    cash: boolean;
+    card: boolean;
+    upi: boolean;
+    razorpay: boolean;
+  };
+  razorpayConfig?: {
+    keyId?: string;
+    keySecret?: string;
+  };
   theme: RestaurantTheme;
 }
 
@@ -34,6 +55,23 @@ export const ManagerSettings: React.FC = () => {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
+  const [gstNumber, setGstNumber] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [openTime, setOpenTime] = useState('09:00');
+  const [closeTime, setCloseTime] = useState('23:00');
+
+  // Social Links
+  const [facebook, setFacebook] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [twitter, setTwitter] = useState('');
+
+  // Payment Methods
+  const [cashEnabled, setCashEnabled] = useState(true);
+  const [cardEnabled, setCardEnabled] = useState(true);
+  const [upiEnabled, setUpiEnabled] = useState(true);
+  const [razorpayEnabled, setRazorpayEnabled] = useState(false);
+  const [razorpayKeyId, setRazorpayKeyId] = useState('');
+  const [razorpayKeySecret, setRazorpayKeySecret] = useState('');
 
   // Theme states
   const [primaryColor, setPrimaryColor] = useState('#111827');
@@ -61,6 +99,31 @@ export const ManagerSettings: React.FC = () => {
       setEmail(p.email || '');
       setAddress(p.address || '');
       setGoogleReviewUrl(p.googleReviewUrl || '');
+      setGstNumber(p.gstNumber || '');
+      setWhatsapp(p.whatsapp || '');
+
+      if (p.timings) {
+        setOpenTime(p.timings.open || '09:00');
+        setCloseTime(p.timings.close || '23:00');
+      }
+
+      if (p.socialLinks) {
+        setFacebook(p.socialLinks.facebook || '');
+        setInstagram(p.socialLinks.instagram || '');
+        setTwitter(p.socialLinks.twitter || '');
+      }
+
+      if (p.paymentMethods) {
+        setCashEnabled(!!p.paymentMethods.cash);
+        setCardEnabled(!!p.paymentMethods.card);
+        setUpiEnabled(!!p.paymentMethods.upi);
+        setRazorpayEnabled(!!p.paymentMethods.razorpay);
+      }
+
+      if (p.razorpayConfig) {
+        setRazorpayKeyId(p.razorpayConfig.keyId || '');
+        setRazorpayKeySecret(p.razorpayConfig.keySecret || '');
+      }
 
       if (p.theme) {
         setPrimaryColor(p.theme.primaryColor || '#111827');
@@ -100,6 +163,27 @@ export const ManagerSettings: React.FC = () => {
       email: email.trim() || undefined,
       address: address.trim() || undefined,
       googleReviewUrl: googleReviewUrl.trim() || undefined,
+      gstNumber: gstNumber.trim() || undefined,
+      whatsapp: whatsapp.trim() || undefined,
+      timings: {
+        open: openTime,
+        close: closeTime,
+      },
+      socialLinks: {
+        facebook: facebook.trim(),
+        instagram: instagram.trim(),
+        twitter: twitter.trim(),
+      },
+      paymentMethods: {
+        cash: cashEnabled,
+        card: cardEnabled,
+        upi: upiEnabled,
+        razorpay: razorpayEnabled,
+      },
+      razorpayConfig: {
+        keyId: razorpayKeyId.trim(),
+        keySecret: razorpayKeySecret.trim(),
+      },
       theme: {
         primaryColor,
         secondaryColor,
@@ -191,6 +275,48 @@ export const ManagerSettings: React.FC = () => {
                 className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
               />
             </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">GST Number</label>
+              <input
+                type="text"
+                value={gstNumber}
+                onChange={(e) => setGstNumber(e.target.value)}
+                placeholder="27AAAAA1111A1Z1"
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">WhatsApp Contact</label>
+              <input
+                type="text"
+                value={whatsapp}
+                onChange={(e) => setWhatsapp(e.target.value)}
+                placeholder="+919876543210"
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Opening Time</label>
+              <input
+                type="time"
+                value={openTime}
+                onChange={(e) => setOpenTime(e.target.value)}
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Closing Time</label>
+              <input
+                type="time"
+                value={closeTime}
+                onChange={(e) => setCloseTime(e.target.value)}
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
+              />
+            </div>
           </div>
 
           <div>
@@ -213,6 +339,123 @@ export const ManagerSettings: React.FC = () => {
               className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500"
             />
           </div>
+        </div>
+
+        {/* Social Links Card */}
+        <div className="bg-white rounded-3xl border border-slate-150 p-6 shadow-sm space-y-4">
+          <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-1.5">
+            <span>Social Media Channels</span>
+          </h4>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Facebook Profile</label>
+              <input
+                type="text"
+                value={facebook}
+                onChange={(e) => setFacebook(e.target.value)}
+                placeholder="https://facebook.com/mybistro"
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Instagram Handle</label>
+              <input
+                type="text"
+                value={instagram}
+                onChange={(e) => setInstagram(e.target.value)}
+                placeholder="https://instagram.com/mybistro"
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Twitter Channel</label>
+              <input
+                type="text"
+                value={twitter}
+                onChange={(e) => setTwitter(e.target.value)}
+                placeholder="https://twitter.com/mybistro"
+                className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Payments Channels Config Card */}
+        <div className="bg-white rounded-3xl border border-slate-150 p-6 shadow-sm space-y-4">
+          <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-1.5">
+            <span>Payment Methods & Channels</span>
+          </h4>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <label className="flex items-center gap-2.5 p-3.5 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={cashEnabled}
+                onChange={(e) => setCashEnabled(e.target.checked)}
+                className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300"
+              />
+              <span className="text-xs font-bold text-slate-700">Accept Cash</span>
+            </label>
+
+            <label className="flex items-center gap-2.5 p-3.5 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={cardEnabled}
+                onChange={(e) => setCardEnabled(e.target.checked)}
+                className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300"
+              />
+              <span className="text-xs font-bold text-slate-700">Accept Card</span>
+            </label>
+
+            <label className="flex items-center gap-2.5 p-3.5 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={upiEnabled}
+                onChange={(e) => setUpiEnabled(e.target.checked)}
+                className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300"
+              />
+              <span className="text-xs font-bold text-slate-700">UPI Payments</span>
+            </label>
+
+            <label className="flex items-center gap-2.5 p-3.5 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50">
+              <input
+                type="checkbox"
+                checked={razorpayEnabled}
+                onChange={(e) => setRazorpayEnabled(e.target.checked)}
+                className="h-4 w-4 rounded text-amber-500 focus:ring-amber-500 border-slate-300"
+              />
+              <span className="text-xs font-bold text-slate-700 font-sans">Razorpay Gateway</span>
+            </label>
+          </div>
+
+          {razorpayEnabled && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Razorpay Key ID</label>
+                <input
+                  type="text"
+                  value={razorpayKeyId}
+                  onChange={(e) => setRazorpayKeyId(e.target.value)}
+                  placeholder="rzp_test_..."
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1.5">Razorpay Key Secret</label>
+                <input
+                  type="password"
+                  value={razorpayKeySecret}
+                  onChange={(e) => setRazorpayKeySecret(e.target.value)}
+                  placeholder="••••••••••••••••"
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-amber-500 font-mono"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Branding Theme Card */}

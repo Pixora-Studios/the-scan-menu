@@ -7,6 +7,8 @@ export interface ITable extends Document {
   token: string;
   isActive: boolean;
   qrCodeUrl: string;
+  isArchived: boolean;
+  status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,6 +21,13 @@ const tableSchema = new Schema<ITable>(
     token: { type: String, required: true, unique: true },
     isActive: { type: Boolean, required: true, default: true },
     qrCodeUrl: { type: String, required: true },
+    isArchived: { type: Boolean, required: true, default: false },
+    status: {
+      type: String,
+      required: true,
+      enum: ['AVAILABLE', 'OCCUPIED', 'RESERVED'],
+      default: 'AVAILABLE',
+    },
   },
   {
     timestamps: true,

@@ -3,10 +3,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { ToastProvider } from './hooks/useToast';
 import ProtectedRoute from './routes/ProtectedRoute';
 import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
 import AdminRestaurants from './pages/AdminRestaurants';
-import ManagerTables from './pages/ManagerTables';
-import ManagerMenu from './pages/ManagerMenu';
 import PublicTable from './pages/PublicTable';
 import PublicOrderConfirmation from './pages/PublicOrderConfirmation';
 import ManagerOrders from './pages/ManagerOrders';
@@ -26,7 +23,7 @@ export const App = () => {
 
           {/* Protected Routes (all roles) */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/" element={<Navigate to="/manager/orders" replace />} />
           </Route>
 
           {/* Super Admin only routes */}
@@ -37,12 +34,13 @@ export const App = () => {
           {/* Manager/Staff/Super Admin routes */}
           <Route element={<ProtectedRoute allowedRoles={['MANAGER', 'STAFF', 'SUPER_ADMIN']} />}>
             <Route path="/manager/orders" element={<ManagerOrders />} />
+            <Route path="/manager/order" element={<Navigate to="/manager/orders" replace />} />
           </Route>
 
           {/* Manager/Super Admin only routes */}
           <Route element={<ProtectedRoute allowedRoles={['MANAGER', 'SUPER_ADMIN']} />}>
-            <Route path="/manager/tables" element={<ManagerTables />} />
-            <Route path="/manager/menu" element={<ManagerMenu />} />
+            <Route path="/manager/tables" element={<Navigate to="/manager/orders?tab=tables" replace />} />
+            <Route path="/manager/menu" element={<Navigate to="/manager/orders?tab=menu" replace />} />
           </Route>
 
           {/* Fallback */}

@@ -2,9 +2,12 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { Restaurant } from '../models/Restaurant';
 import { Table } from '../models/Table';
+import { User } from '../models/User';
+import { RestaurantStaff } from '../models/RestaurantStaff';
 import { TableService } from '../services/table.service';
 import { sendSuccess, sendError } from '../utils/response';
 import mongoose from 'mongoose';
+import bcrypt from 'bcrypt';
 
 const tableService = new TableService();
 
@@ -20,6 +23,138 @@ export class RestaurantController {
     this.deactivateTable = this.deactivateTable.bind(this);
     this.regenerateTableQr = this.regenerateTableQr.bind(this);
     this.getTableQr = this.getTableQr.bind(this);
+
+    // Waiter Staff Management
+    this.createStaff = this.createStaff.bind(this);
+    this.listStaff = this.listStaff.bind(this);
+    this.updateStaff = this.updateStaff.bind(this);
+    this.deleteStaff = this.deleteStaff.bind(this);
+  }
+
+  async createStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId } = req.params;
+      const { email, name, password, pin } = req.body;
+
+      if (!email || !name || !password) {
+        sendError(res, 'BAD_REQUEST', 'Email, name, and password are required', null, 400);
+        return;
+      }
+
+      // Check if user already exists
+      const existingUser = await User.findOne({ email: email.toLowerCase().trim() });
+      if (existingUser) {
+        sendError(res, 'USER_ALREADY_EXISTS', 'A user with this email already exists', null, 400);
+        return;
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const staffUser = new User({
+        email: email.toLowerCase().trim(),
+        passwordHash,
+        name: name.trim(),
+        role: 'STAFF',
+        isActive: true,
+        pin: pin ? pin.trim() : undefined,
+      });
+
+      await staffUser.save();
+
+      // Create RestaurantStaff row
+      const staffJoin = new RestaurantStaff({
+        userId: staffUser._id,
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+        role: 'STAFF',
+        isActive: true,
+      });
+      await staffJoin.save();
+
+      sendSuccess(res, { id: staffUser._id, email: staffUser.email, name: staffUser.name, role: staffUser.role, pin: staffUser.pin }, 'Staff created and associated successfully', 201);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async listStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId } = req.params;
+
+      const staffJoins = await RestaurantStaff.find({
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+        role: 'STAFF',
+        isActive: true,
+      }).populate('userId');
+
+      const staffUsers = staffJoins
+        .map((j) => j.userId)
+        .filter((u) => u !== null);
+
+      sendSuccess(res, staffUsers, 'Staff listed successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId, staffId } = req.params;
+      const { name, email, password, pin, isActive } = req.body;
+
+      const staffJoin = await RestaurantStaff.findOne({
+        userId: new mongoose.Types.ObjectId(staffId),
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      });
+
+      if (!staffJoin) {
+        sendError(res, 'STAFF_NOT_FOUND', 'Staff association not found', null, 404);
+        return;
+      }
+
+      const user = await User.findById(staffId);
+      if (!user) {
+        sendError(res, 'USER_NOT_FOUND', 'User not found', null, 404);
+        return;
+      }
+
+      if (name) user.name = name.trim();
+      if (email) user.email = email.toLowerCase().trim();
+      if (password) user.passwordHash = await bcrypt.hash(password, 10);
+      if (pin !== undefined) user.pin = pin ? pin.trim() : undefined;
+      if (isActive !== undefined) {
+        user.isActive = !!isActive;
+        staffJoin.isActive = !!isActive;
+        await staffJoin.save();
+      }
+
+      await user.save();
+
+      sendSuccess(res, { id: user._id, email: user.email, name: user.name, role: user.role, pin: user.pin, isActive: user.isActive }, 'Staff updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteStaff(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId, staffId } = req.params;
+
+      const staffJoin = await RestaurantStaff.findOneAndDelete({
+        userId: new mongoose.Types.ObjectId(staffId),
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      });
+
+      if (!staffJoin) {
+        sendError(res, 'STAFF_NOT_FOUND', 'Staff association not found', null, 404);
+        return;
+      }
+
+      // Soft-archive user by deactivating
+      await User.findByIdAndUpdate(staffId, { isActive: false });
+
+      sendSuccess(res, {}, 'Staff association removed successfully');
+    } catch (error) {
+      next(error);
+    }
   }
 
   async getRestaurantProfile(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
