@@ -107,8 +107,18 @@ export const PublicTable: React.FC = () => {
   // Zustand Cart Store
   const { items: cartItems, setTable, addItem, updateQuantity, clearCart } = useCartStore();
 
-  // Primary Bottom Tab: 'landing' | 'menu' | 'search' | 'waiter' | 'reviews'
-  const [activeTab, setActiveTab] = useState<'landing' | 'menu' | 'search' | 'waiter' | 'reviews'>('landing');
+  // Primary Bottom Tab: 'landing' | 'menu' | 'waiter' | 'reviews'
+  const [activeTab, setActiveTab] = useState<'landing' | 'menu' | 'waiter' | 'reviews'>('landing');
+
+  const [recentOrderIds, setRecentOrderIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (restaurantSlug && tableToken) {
+      const key = `pixora_orders_${restaurantSlug}_${tableToken}`;
+      const stored = JSON.parse(localStorage.getItem(key) || '[]');
+      setRecentOrderIds(stored);
+    }
+  }, [restaurantSlug, tableToken]);
 
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -429,6 +439,14 @@ export const PublicTable: React.FC = () => {
 
       if (res.data.success) {
         toast('Order verified and placed successfully!', 'success');
+
+        // Save order ID to localStorage
+        const key = `pixora_orders_${restaurantSlug}_${tableToken}`;
+        const stored = JSON.parse(localStorage.getItem(key) || '[]');
+        stored.push(res.data.data._id);
+        localStorage.setItem(key, JSON.stringify(stored));
+        setRecentOrderIds(stored);
+
         clearCart();
         setIsCartSheetOpen(false);
         setIsOtpModalOpen(false);
@@ -557,6 +575,28 @@ export const PublicTable: React.FC = () => {
                 </span>
               </div>
             </div>
+
+            {/* Track Orders Banner */}
+            {recentOrderIds.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200/65 rounded-3xl p-5 flex items-center justify-between shadow-sm animate-fade-in gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 bg-amber-100 rounded-2xl flex items-center justify-center text-amber-600 shrink-0">
+                    <Clock className="w-5 h-5 animate-pulse" strokeWidth={1.75} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-900">Track Placed Orders</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">You have {recentOrderIds.length} order{recentOrderIds.length > 1 ? 's' : ''} placed at this table.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${recentOrderIds[recentOrderIds.length - 1]}`)}
+                  className="px-3.5 py-2 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm shrink-0 whitespace-nowrap"
+                >
+                  <span>Track Status</span>
+                  <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
 
             {/* Prompt CTA to explore */}
             <button
@@ -729,6 +769,30 @@ export const PublicTable: React.FC = () => {
               </select>
             </div>
           </div>
+
+          {/* Track Orders Banner */}
+          {recentOrderIds.length > 0 && (
+            <div className="max-w-md mx-auto px-4">
+              <div className="bg-amber-50 border border-amber-200/65 rounded-3xl p-4 flex items-center justify-between shadow-sm animate-fade-in gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
+                    <Clock className="w-5 h-5 animate-pulse" strokeWidth={1.75} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-xs text-slate-900">Track Placed Orders</h4>
+                    <p className="text-[10px] text-slate-500 font-medium">You have {recentOrderIds.length} order{recentOrderIds.length > 1 ? 's' : ''} placed at this table.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${recentOrderIds[recentOrderIds.length - 1]}`)}
+                  className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm shrink-0 whitespace-nowrap"
+                >
+                  <span>Track Status</span>
+                  <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Horizontal category sub nav */}
           {filteredCategories.length > 0 && (
