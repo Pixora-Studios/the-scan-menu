@@ -24,6 +24,10 @@ import {
   MapPin,
   Clock,
   CreditCard,
+  Zap,
+  ShieldCheck,
+  Receipt,
+  ClipboardList,
 } from 'lucide-react';
 import { publicService, PublicCategory, MenuItem, AddOn } from '../services/restaurant.service';
 import { useCartStore } from '../store/useCartStore';
@@ -107,16 +111,26 @@ export const PublicTable: React.FC = () => {
   // Zustand Cart Store
   const { items: cartItems, setTable, addItem, updateQuantity, clearCart } = useCartStore();
 
-  // Primary Bottom Tab: 'landing' | 'menu' | 'waiter' | 'reviews'
-  const [activeTab, setActiveTab] = useState<'landing' | 'menu' | 'waiter' | 'reviews'>('landing');
+  // Primary Bottom Tab: 'landing' | 'menu' | 'waiter' | 'cart-orders'
+  const [activeTab, setActiveTab] = useState<'landing' | 'menu' | 'waiter' | 'cart-orders'>('landing');
+  const [cartOrdersSubTab, setCartOrdersSubTab] = useState<'cart' | 'orders'>('cart');
 
   const [recentOrderIds, setRecentOrderIds] = useState<string[]>([]);
+  const [recentWaiterCalls, setRecentWaiterCalls] = useState<{ type: string; timestamp: string }[]>([]);
 
   useEffect(() => {
     if (restaurantSlug && tableToken) {
       const key = `pixora_orders_${restaurantSlug}_${tableToken}`;
       const stored = JSON.parse(localStorage.getItem(key) || '[]');
       setRecentOrderIds(stored);
+    }
+  }, [restaurantSlug, tableToken]);
+
+  useEffect(() => {
+    if (restaurantSlug && tableToken) {
+      const key = `pixora_waiter_calls_${restaurantSlug}_${tableToken}`;
+      const stored = JSON.parse(localStorage.getItem(key) || '[]');
+      setRecentWaiterCalls(stored);
     }
   }, [restaurantSlug, tableToken]);
 
@@ -135,7 +149,6 @@ export const PublicTable: React.FC = () => {
   const [selectedRequestType, setSelectedRequestType] = useState<'CALL_WAITER' | 'REQUEST_BILL' | 'WATER' | 'TISSUE' | 'OTHER'>('CALL_WAITER');
   const [isWaiterConfirmOpen, setIsWaiterConfirmOpen] = useState(false);
   const [isClearCartModalOpen, setIsClearCartModalOpen] = useState(false);
-  const [isCartSheetOpen, setIsCartSheetOpen] = useState(false);
 
   // Phone checkout / OTP State
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
@@ -173,6 +186,27 @@ export const PublicTable: React.FC = () => {
       }
     }
   }, [activeCallData]);
+
+  // Query all recent orders' details for the table
+  const { data: recentOrdersData, isLoading: isRecentOrdersLoading } = useQuery({
+    queryKey: ['recentOrdersDetails', recentOrderIds],
+    queryFn: async () => {
+      if (!recentOrderIds || recentOrderIds.length === 0) return [];
+      const promises = recentOrderIds.map(async (id) => {
+        try {
+          const res = await apiClient.get(`/public/orders/${id}`);
+          return res.data?.success ? res.data.data : null;
+        } catch (e) {
+          console.error('Error fetching order details', id, e);
+          return null;
+        }
+      });
+      const results = await Promise.all(promises);
+      return results.filter(Boolean);
+    },
+    enabled: recentOrderIds.length > 0,
+    refetchInterval: activeTab === 'cart-orders' && cartOrdersSubTab === 'orders' ? 10000 : false,
+  });
 
   // Bottom Sheet States for Item Detail
   const [detailQuantity, setDetailQuantity] = useState(1);
@@ -448,7 +482,6 @@ export const PublicTable: React.FC = () => {
         setRecentOrderIds(stored);
 
         clearCart();
-        setIsCartSheetOpen(false);
         setIsOtpModalOpen(false);
         setCustomerNote('');
         setPhoneNumber('');
@@ -482,6 +515,17 @@ export const PublicTable: React.FC = () => {
         requestType: selectedRequestType,
       });
       toast('Call successfully dispatched to staff operations board.', 'success');
+
+      // Add to recent log
+      const key = `pixora_waiter_calls_${restaurantSlug}_${tableToken}`;
+      const stored = JSON.parse(localStorage.getItem(key) || '[]');
+      const newCall = {
+        type: selectedRequestType,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      const updated = [newCall, ...stored].slice(0, 5); // limit to 5
+      localStorage.setItem(key, JSON.stringify(updated));
+      setRecentWaiterCalls(updated);
 
       setTimeout(() => {
         setWaiterCallState('waiting');
@@ -653,24 +697,26 @@ export const PublicTable: React.FC = () => {
                 <div className="flex flex-wrap gap-2 pt-1">
                   {restaurant.paymentMethods.cash && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-100">
-                      <CreditCard className="w-3.5 h-3.5" strokeWidth={2} />
+                      <CreditCard className="w-3.5 h-3.5" strokeWidth={1.75} />
                       Cash
                     </span>
                   )}
                   {restaurant.paymentMethods.card && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-indigo-50 text-indigo-800 border border-indigo-100">
-                      <CreditCard className="w-3.5 h-3.5" strokeWidth={2} />
+                      <CreditCard className="w-3.5 h-3.5" strokeWidth={1.75} />
                       Cards
                     </span>
                   )}
                   {restaurant.paymentMethods.upi && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-sky-50 text-sky-800 border border-sky-100">
-                      ⚡ UPI
+                      <Zap className="w-3.5 h-3.5 text-sky-600" strokeWidth={1.75} />
+                      UPI
                     </span>
                   )}
                   {restaurant.paymentMethods.razorpay && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-100">
-                      🛡️ Razorpay
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-600" strokeWidth={1.75} />
+                      Razorpay
                     </span>
                   )}
                 </div>
@@ -702,6 +748,109 @@ export const PublicTable: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* Reviews Section */}
+            <div className="space-y-4 border-t border-slate-200/60 pt-6">
+              <div className="text-center space-y-1">
+                <h3 className="font-display text-2xl font-normal text-slate-900">What Our Guests Say</h3>
+                <p className="text-xs text-slate-500">Verified platform testimonials from our guests.</p>
+              </div>
+
+              {/* Ratings Overview Card */}
+              <div className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="text-center bg-amber-50/50 border border-amber-100 p-4 rounded-2xl shrink-0">
+                    <span className="text-3xl font-black text-slate-900 block font-mono leading-none">4.9</span>
+                    <div className="flex gap-0.5 text-amber-500 justify-center mt-1.5">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Star key={i} className="w-3 h-3 fill-current" strokeWidth={1.5} />
+                      ))}
+                    </div>
+                    <span className="text-[9px] text-slate-400 font-semibold block mt-1 font-mono">148 reviews</span>
+                  </div>
+
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className="w-2 font-bold font-mono text-slate-400">5</span>
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: '92%' }} />
+                      </div>
+                      <span className="w-6 text-right font-bold text-slate-400 font-mono">92%</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className="w-2 font-bold font-mono text-slate-400">4</span>
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: '6%' }} />
+                      </div>
+                      <span className="w-6 text-right font-bold text-slate-400 font-mono">6%</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px]">
+                      <span className="w-2 font-bold font-mono text-slate-400">3</span>
+                      <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-amber-400 rounded-full" style={{ width: '2%' }} />
+                      </div>
+                      <span className="w-6 text-right font-bold text-slate-400 font-mono">2%</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-2.5 flex items-center justify-center gap-1.5 border border-slate-100">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" strokeWidth={1.75} />
+                  <span className="text-[10px] text-slate-500 font-bold leading-relaxed text-center">
+                    100% Authentic Dine-In Feedback verified via platform checkout.
+                  </span>
+                </div>
+              </div>
+
+              {/* Testimonials Carousel */}
+              <div className="w-full overflow-hidden">
+                <div className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none gap-4 pb-4 px-1 pt-1">
+                  {mockReviews.map((rev, idx) => {
+                    const colors = [
+                      'bg-amber-100 text-amber-800',
+                      'bg-indigo-100 text-indigo-800',
+                      'bg-emerald-100 text-emerald-800',
+                      'bg-rose-100 text-rose-800',
+                    ];
+                    const avatarColor = colors[idx % colors.length];
+                    return (
+                      <div
+                        key={idx}
+                        className="snap-center shrink-0 w-[85%] bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-3.5"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${avatarColor}`}>
+                            {rev.author.charAt(0)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-bold text-slate-900 text-xs block truncate">{rev.author}</span>
+                            <div className="flex gap-0.5 text-amber-500 mt-0.5">
+                              {Array.from({ length: rev.rating }).map((_, i) => (
+                                <Star key={i} className="w-3 h-3 fill-current" strokeWidth={1.5} />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-slate-600 text-xs leading-relaxed italic font-sans min-h-[48px]">
+                          "{rev.text}"
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Google Review Link */}
+              <a
+                href={restaurant.googleReviewUrl || `https://www.google.com/search?q=${encodeURIComponent(restaurant.name + ' reviews')}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-4 bg-white border-2 border-slate-950 text-slate-950 hover:bg-slate-50 font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-sm text-center"
+              >
+                <MessageSquare className="w-5 h-5 text-amber-500 fill-current" strokeWidth={1.75} />
+                <span>Submit Google Review</span>
+              </a>
+            </div>
           </div>
         </motion.div>
       )}
@@ -952,175 +1101,394 @@ export const PublicTable: React.FC = () => {
           key="waiter"
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-md mx-auto px-4 py-4 space-y-6 flex flex-col"
+          className="max-w-md mx-auto px-4 py-4 space-y-6 flex flex-col pb-8"
         >
-          <div className="text-center space-y-1">
-            <h3 className="font-display text-3xl font-semibold text-slate-900">How can we help you?</h3>
-            <p className="text-xs text-slate-500">Select an assistance request type to notify the server staff.</p>
+          <div className="text-center space-y-2">
+            <h3 className="font-display text-4xl font-normal text-slate-900 tracking-tight">
+              Table Service & Assistance
+            </h3>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+              Need water, the bill, or table assistance? Select a request below and we will notify your server immediately.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3.5 pt-4">
+          {/* Interactive tactile request grid */}
+          <div className="grid grid-cols-2 gap-3.5 pt-2">
             {([
-              { key: 'CALL_WAITER', label: 'Call Server Waiter' },
-              { key: 'REQUEST_BILL', label: 'Request the Bill' },
-              { key: 'WATER', label: 'Bring Drinking Water' },
-              { key: 'TISSUE', label: 'Bring Tissue Paper' },
-              { key: 'OTHER', label: 'Other Requests' },
-            ] as const).map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setSelectedRequestType(t.key)}
-                className={`p-4 rounded-2xl border text-center font-bold text-xs transition flex flex-col items-center justify-center gap-2 shadow-sm ${
-                  selectedRequestType === t.key
-                    ? 'bg-slate-950 border-slate-950 text-white'
-                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                <span className="text-base leading-none">🛎️</span>
-                <span>{t.label}</span>
-              </button>
-            ))}
+              { key: 'CALL_WAITER', label: 'Server Waiter', desc: 'General table help', icon: BellRing, color: 'text-amber-500' },
+              { key: 'REQUEST_BILL', label: 'Request Bill', desc: 'Printed copy & payment', icon: Receipt, color: 'text-indigo-500' },
+              { key: 'WATER', label: 'Drinking Water', desc: 'Fresh refilled water', icon: Sparkles, color: 'text-sky-500' },
+              { key: 'TISSUE', label: 'Tissue Paper', desc: 'Extra paper tissues', icon: Leaf, color: 'text-emerald-500' },
+              { key: 'OTHER', label: 'Other Requests', desc: 'Custom assistance', icon: MessageSquare, color: 'text-rose-500' },
+            ] as const).map((t) => {
+              const IconComp = t.icon;
+              const isSelected = selectedRequestType === t.key;
+              return (
+                <motion.button
+                  key={t.key}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setSelectedRequestType(t.key)}
+                  className={`p-4 rounded-3xl border text-left transition-all flex flex-col justify-between min-h-[110px] shadow-sm relative overflow-hidden ${
+                    isSelected
+                      ? 'bg-slate-900 border-slate-900 text-white'
+                      : 'bg-white border-slate-150 text-slate-700 hover:bg-slate-50/50 hover:border-slate-300'
+                  }`}
+                >
+                  <div className={`p-2 rounded-2xl w-fit ${isSelected ? 'bg-white/10' : 'bg-slate-50'} ${t.color}`}>
+                    <IconComp className="w-5 h-5" strokeWidth={1.75} />
+                  </div>
+                  <div className="mt-4">
+                    <span className="font-bold text-xs block leading-tight">{t.label}</span>
+                    <span className={`text-[10px] font-medium block mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                      {t.desc}
+                    </span>
+                  </div>
+                  {isSelected && (
+                    <motion.div
+                      layoutId="selected-indicator"
+                      className="absolute top-3 right-3 w-2 h-2 rounded-full bg-amber-400"
+                    />
+                  )}
+                </motion.button>
+              );
+            })}
           </div>
 
-          {waiterCallState === 'idle' && (
-            <button
-              onClick={() => setIsWaiterConfirmOpen(true)}
-              className="w-full py-4 mt-6 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-md"
-            >
-              <BellRing className="w-5 h-5 animate-bounce" strokeWidth={1.75} />
-              <span>Dispatch Assistance Alert</span>
-            </button>
-          )}
+          {/* Action Trigger Buttons with Premium Visual Pulsing Indicators */}
+          <div className="pt-2 relative">
+            {waiterCallState === 'idle' && (
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                onClick={() => setIsWaiterConfirmOpen(true)}
+                className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-lg"
+              >
+                <BellRing className="w-4.5 h-4.5" strokeWidth={1.75} />
+                <span>Call for {selectedRequestType.replace('_', ' ').toLowerCase()}</span>
+              </motion.button>
+            )}
 
-          {waiterCallState === 'pulsing' && (
-            <button
-              disabled
-              className="w-full py-4 mt-6 bg-amber-100 text-amber-800 text-sm font-semibold rounded-2xl cursor-not-allowed select-none flex items-center justify-center gap-2"
-            >
-              <Loader className="w-4 h-4 animate-spin text-amber-600" />
-              <span>Contacting operations...</span>
-            </button>
-          )}
+            {waiterCallState === 'pulsing' && (
+              <div className="w-full py-4 bg-amber-100 text-amber-800 text-sm font-semibold rounded-2xl flex items-center justify-center gap-2 border border-amber-200">
+                <Loader className="w-4 h-4 animate-spin text-amber-600" />
+                <span>Broadcasting to staff board...</span>
+              </div>
+            )}
 
-          {waiterCallState === 'waiting' && (
-            <div className="bg-emerald-50 rounded-2xl p-5 border border-emerald-150 text-emerald-800 text-center space-y-2 mt-6">
-              <CheckCircle2 className="w-7 h-7 text-emerald-600 mx-auto" strokeWidth={2.2} />
-              <div className="space-y-0.5">
-                <h4 className="font-bold text-sm">Assistance Alert Active</h4>
-                <p className="text-xs text-emerald-600 leading-normal">
-                  Staff operations board has been notified. A server is heading to your spot.
-                </p>
+            {waiterCallState === 'waiting' && (
+              <div className="relative">
+                {/* Visual pulsing wave behind the notification card */}
+                <div className="absolute -inset-1 rounded-3xl bg-emerald-500/10 blur animate-pulse" />
+                <div className="relative bg-emerald-50 rounded-2xl p-5 border border-emerald-150 text-emerald-800 text-center space-y-2.5 shadow-sm">
+                  <div className="relative mx-auto w-10 h-10 flex items-center justify-center">
+                    {/* Pulsing visual indicator rings */}
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-30" />
+                    <div className="relative rounded-full bg-emerald-500 p-2 text-white">
+                      <CheckCircle2 className="w-5 h-5" strokeWidth={2.2} />
+                    </div>
+                  </div>
+                  <div className="space-y-0.5">
+                    <h4 className="font-bold text-sm tracking-tight text-slate-900">Active Request Sent</h4>
+                    <p className="text-[11px] text-slate-500 leading-normal max-w-xs mx-auto">
+                      Your alert for <strong className="text-slate-800">"{selectedRequestType.replace('_', ' ')}"</strong> has been logged. A team member is on their way to Table {table.tableNumber}.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Recent Waiter Request History Timeline */}
+          {recentWaiterCalls.length > 0 && (
+            <div className="space-y-3 pt-4 border-t border-slate-150">
+              <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block font-mono">
+                Recent Service History
+              </span>
+              <div className="space-y-2">
+                {recentWaiterCalls.map((call, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-white rounded-xl p-3 border border-slate-150 flex items-center justify-between text-xs transition"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                      <span className="font-semibold text-slate-800">
+                        {call.type.replace('_', ' ')} Requested
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400 font-mono">
+                      {call.timestamp}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
         </motion.div>
       )}
 
-      {/* -------------------- 5. REVIEWS TAB -------------------- */}
-      {activeTab === 'reviews' && (
+      {/* -------------------- 5. CART & ORDERS TAB -------------------- */}
+      {activeTab === 'cart-orders' && (
         <motion.div
-          key="reviews"
+          key="cart-orders"
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
-          className="max-w-md mx-auto px-4 py-4 space-y-6 overflow-x-hidden"
+          className="max-w-md mx-auto px-4 py-4 space-y-6 flex flex-col pb-8"
         >
+          {/* Header */}
           <div className="text-center space-y-1">
-            <h3 className="font-display text-3xl font-semibold text-slate-900">What Our Guests Say</h3>
-            <p className="text-xs text-slate-500">Verified platform testimonials from our guests.</p>
+            <h3 className="font-display text-4xl font-normal text-slate-900 tracking-tight">My Basket & Orders</h3>
+            <p className="text-xs text-slate-500">Manage your active cart and track kitchen orders.</p>
           </div>
 
-          {/* Ratings Overview Card */}
-          <div className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="text-center bg-amber-50/50 border border-amber-100 p-4 rounded-2xl shrink-0">
-                <span className="text-3xl font-black text-slate-900 block font-mono leading-none">4.9</span>
-                <div className="flex gap-0.5 text-amber-500 justify-center mt-1.5">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className="w-3 h-3 fill-current" strokeWidth={1.5} />
-                  ))}
-                </div>
-                <span className="text-[9px] text-slate-400 font-semibold block mt-1 font-mono">148 reviews</span>
-              </div>
-
-              <div className="flex-1 space-y-2">
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span className="w-2 font-bold font-mono text-slate-400">5</span>
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400 rounded-full" style={{ width: '92%' }} />
-                  </div>
-                  <span className="w-6 text-right font-bold text-slate-400 font-mono">92%</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span className="w-2 font-bold font-mono text-slate-400">4</span>
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400 rounded-full" style={{ width: '6%' }} />
-                  </div>
-                  <span className="w-6 text-right font-bold text-slate-400 font-mono">6%</span>
-                </div>
-                <div className="flex items-center gap-2 text-[10px]">
-                  <span className="w-2 font-bold font-mono text-slate-400">3</span>
-                  <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400 rounded-full" style={{ width: '2%' }} />
-                  </div>
-                  <span className="w-6 text-right font-bold text-slate-400 font-mono">2%</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl p-2.5 flex items-center justify-center gap-1.5 border border-slate-100">
-              <span className="text-xs">🛡️</span>
-              <span className="text-[10px] text-slate-500 font-bold leading-relaxed text-center">
-                100% Authentic Dine-In Feedback verified via platform checkout.
-              </span>
-            </div>
+          {/* Sticky/Fixed Segmented Top Tab Controls */}
+          <div className="flex bg-slate-100 rounded-2xl p-1.5 border border-slate-200">
+            <button
+              onClick={() => setCartOrdersSubTab('cart')}
+              className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all ${
+                cartOrdersSubTab === 'cart'
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Basket Cart ({cartItems.reduce((sum, item) => sum + item.quantity, 0)})
+            </button>
+            <button
+              onClick={() => setCartOrdersSubTab('orders')}
+              className={`flex-1 py-2.5 text-xs font-extrabold rounded-xl transition-all ${
+                cartOrdersSubTab === 'orders'
+                  ? 'bg-white text-slate-950 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Placed Orders ({recentOrderIds.length})
+            </button>
           </div>
 
-          <div className="w-full overflow-hidden">
-            <div className="flex overflow-x-auto snap-x snap-mandatory scrollbar-none gap-4 pb-4 px-1 pt-1">
-              {mockReviews.map((rev, idx) => {
-                const colors = [
-                  'bg-amber-100 text-amber-800',
-                  'bg-indigo-100 text-indigo-800',
-                  'bg-emerald-100 text-emerald-800',
-                  'bg-rose-100 text-rose-800',
-                ];
-                const avatarColor = colors[idx % colors.length];
-                return (
-                  <div
-                    key={idx}
-                    className="snap-center shrink-0 w-[85%] bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-3.5"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm ${avatarColor}`}>
-                        {rev.author.charAt(0)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <span className="font-bold text-slate-900 text-xs block truncate">{rev.author}</span>
-                        <div className="flex gap-0.5 text-amber-500 mt-0.5">
-                          {Array.from({ length: rev.rating }).map((_, i) => (
-                            <Star key={i} className="w-3 h-3 fill-current" strokeWidth={1.5} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                    <p className="text-slate-600 text-xs leading-relaxed italic font-sans min-h-[48px]">
-                      "{rev.text}"
+          {/* Sub Tab: CART */}
+          {cartOrdersSubTab === 'cart' && (
+            <div className="space-y-6">
+              {cartItems.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-4">
+                  <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 mx-auto">
+                    <ClipboardList className="w-6 h-6" strokeWidth={1.75} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-slate-800">Your basket is empty</h4>
+                    <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                      Browse our delicious menu, customize your options, and add them here to request service!
                     </p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
+                  <button
+                    onClick={() => setActiveTab('menu')}
+                    className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[11px] rounded-xl transition shadow-sm"
+                  >
+                    Browse Delicious Menu
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between border-b border-slate-50 pb-3">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block font-mono">
+                      Selected Dishes ({cartItems.length})
+                    </span>
+                    <button
+                      onClick={() => setIsClearCartModalOpen(true)}
+                      className="text-xs font-semibold text-red-500 hover:text-red-700 flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
+                      Clear All
+                    </button>
+                  </div>
 
-          <a
-            href={restaurant.googleReviewUrl || `https://www.google.com/search?q=${encodeURIComponent(restaurant.name + ' reviews')}`}
-            target="_blank"
-            rel="noreferrer"
-            className="w-full py-4 bg-white border-2 border-slate-950 text-slate-950 hover:bg-slate-50 font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2 shadow-sm text-center"
-          >
-            <MessageSquare className="w-5 h-5 text-amber-500 fill-current" strokeWidth={1.75} />
-            <span>Submit Google Review</span>
-          </a>
+                  <div className="divide-y divide-slate-100 space-y-3">
+                    {cartItems.map((item, _idx) => {
+                      const failedCheck = failedOrderDetails.find((f) => f.menuItemId === item.itemId);
+                      const isFailed = !!failedCheck;
+
+                      return (
+                        <div
+                          key={_idx}
+                          className={`flex gap-4 py-3 first:pt-0 rounded-xl transition-all ${
+                            isFailed ? 'bg-red-50/50 p-3 border border-red-200/50' : ''
+                          }`}
+                        >
+                          <div className="flex-1 space-y-1">
+                            <h4 className="text-xs font-bold text-slate-900 leading-snug">{item.name}</h4>
+                            {item.selectedAddOns.length > 0 && (
+                              <p className="text-[10px] text-slate-400 font-medium">+ {item.selectedAddOns.map((x) => x.name).join(', ')}</p>
+                            )}
+                            {item.specialInstructions && (
+                              <p className="text-[10px] text-amber-600 bg-amber-50/50 rounded-lg px-2 py-1 inline-block italic font-medium">
+                                Note: "{item.specialInstructions}"
+                              </p>
+                            )}
+                            {isFailed && <p className="text-[10px] font-bold text-red-600 mt-1">⚠️ Item is currently unavailable.</p>}
+                            <p className="text-xs font-bold text-slate-500">{formatPrice(item.price, currency)} each</p>
+                          </div>
+
+                          <div className="flex flex-col items-end justify-between shrink-0">
+                            <span className="text-xs font-black text-slate-900 font-mono">{formatPrice(item.price * item.quantity, currency)}</span>
+                            <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 p-0.5 mt-2">
+                              <button
+                                onClick={() => updateQuantity(item.itemId, item.selectedAddOns, item.specialInstructions || '', -1)}
+                                className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
+                              >
+                                <Minus className="w-3.5 h-3.5" strokeWidth={2} />
+                              </button>
+                              <span className="px-2 font-bold text-slate-900 text-[11px] font-mono w-5 text-center">{item.quantity}</span>
+                              <button
+                                onClick={() => updateQuantity(item.itemId, item.selectedAddOns, item.specialInstructions || '', 1)}
+                                className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
+                              >
+                                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="border-t border-slate-100 pt-5 space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-900 uppercase tracking-wide">Kitchen Special Request Notes</label>
+                      <textarea
+                        rows={2}
+                        placeholder="Add spice requests, cooking style notes..."
+                        value={customerNote}
+                        onChange={(e) => setCustomerNote(e.target.value)}
+                        className="w-full p-3 border border-slate-150 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-xs placeholder:text-slate-400"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs text-slate-500 font-medium">
+                      <span>Subtotal</span>
+                      <span className="font-mono">{formatPrice(cartSubtotal, currency)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-800 font-bold text-sm">Grand Total (Incl. Taxes)</span>
+                      <span className="text-lg font-black text-slate-900 font-mono">{formatPrice(cartSubtotal + Math.round(cartSubtotal * ((restaurant.taxRatePercent || 0) / 100)), currency)}</span>
+                    </div>
+
+                    <button
+                      onClick={handleCheckoutTrigger}
+                      disabled={cartItems.length === 0}
+                      className="w-full bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white py-3.5 rounded-xl font-bold text-xs tracking-wide transition-all shadow-md active:scale-[0.99] uppercase"
+                    >
+                      Confirm Checkout & Order
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sub Tab: ORDERS */}
+          {cartOrdersSubTab === 'orders' && (
+            <div className="space-y-6">
+              {recentOrderIds.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-4">
+                  <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 mx-auto">
+                    <Clock className="w-6 h-6 animate-pulse" strokeWidth={1.75} />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-slate-800">No orders placed yet</h4>
+                    <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
+                      Your placed kitchen orders will appear here. Place items from your basket to see live progress!
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab('menu')}
+                    className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[11px] rounded-xl transition shadow-sm"
+                  >
+                    Go to Menu
+                  </button>
+                </div>
+              ) : isRecentOrdersLoading ? (
+                <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 flex items-center justify-center">
+                  <Loader className="w-6 h-6 animate-spin text-amber-500" />
+                </div>
+              ) : !recentOrdersData || recentOrdersData.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-2 text-slate-500 text-xs">
+                  Error loading orders. Please contact service.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {[...recentOrdersData].reverse().map((order: any, idx) => {
+                    // Status Badge colors
+                    const statusColors: Record<string, string> = {
+                      PENDING: 'bg-amber-50 text-amber-800 border-amber-200/60',
+                      ACCEPTED: 'bg-indigo-50 text-indigo-800 border-indigo-200/60',
+                      PREPARING: 'bg-purple-50 text-purple-800 border-purple-200/60',
+                      READY: 'bg-emerald-50 text-emerald-800 border-emerald-200/60',
+                      SERVED: 'bg-slate-50 text-slate-500 border-slate-200/60',
+                      CANCELLED: 'bg-red-50 text-red-800 border-red-200/60',
+                    };
+
+                    const orderStatus = order.status || 'PENDING';
+                    const badgeClass = statusColors[orderStatus] || 'bg-slate-50 text-slate-800 border-slate-200';
+
+                    return (
+                      <div
+                        key={order._id || idx}
+                        className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4"
+                      >
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-2.5">
+                          <div className="space-y-0.5">
+                            <span className="font-mono text-xs font-extrabold text-slate-900">
+                              Order #{order.orderNumber}
+                            </span>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border ${badgeClass}`}>
+                            {orderStatus}
+                          </span>
+                        </div>
+
+                        {/* Order Items */}
+                        <div className="space-y-1.5">
+                          {order.items.map((item: any, i: number) => (
+                            <div key={i} className="flex justify-between items-start text-xs">
+                              <span className="text-slate-800 font-semibold leading-relaxed">
+                                {item.nameSnapshot} <strong className="text-slate-400 font-mono">x{item.quantity}</strong>
+                              </span>
+                              <span className="font-mono font-bold text-slate-900">
+                                {formatPrice(item.unitPriceSnapshot * item.quantity, currency)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Order Footer & Action */}
+                        <div className="flex items-center justify-between pt-3 border-t border-slate-50">
+                          <div>
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block font-mono">
+                              Total Paid/Due
+                            </span>
+                            <span className="font-mono font-black text-sm text-slate-900">
+                              {formatPrice(order.total, currency)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${order._id}`)}
+                            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm"
+                          >
+                            <span>Track Status</span>
+                            <ChevronRight className="w-3 h-3" strokeWidth={2.5} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </motion.div>
       )}
 
@@ -1128,7 +1496,7 @@ export const PublicTable: React.FC = () => {
           FLOATING CART BAR
           ========================================== */}
       <AnimatePresence>
-        {cartItems.length > 0 && (
+        {cartItems.length > 0 && activeTab !== 'cart-orders' && (
           <motion.div
             initial={{ y: 60, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
@@ -1137,7 +1505,10 @@ export const PublicTable: React.FC = () => {
             className="fixed bottom-20 left-4 right-4 z-30 max-w-md mx-auto"
           >
             <button
-              onClick={() => setIsCartSheetOpen(true)}
+              onClick={() => {
+                setActiveTab('cart-orders');
+                setCartOrdersSubTab('cart');
+              }}
               className="w-full bg-slate-950 hover:bg-slate-900 text-white py-3.5 px-5 rounded-2xl font-bold text-sm tracking-wide transition-all shadow-xl flex items-center justify-between border border-slate-800 active:scale-[0.98]"
             >
               <div className="flex items-center gap-3">
@@ -1193,15 +1564,20 @@ export const PublicTable: React.FC = () => {
           )}
         </button>
 
-        {/* Reviews */}
+        {/* Cart & Orders */}
         <button
-          onClick={() => setActiveTab('reviews')}
-          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full transition-all ${
-            activeTab === 'reviews' ? 'text-slate-950 font-black' : 'text-slate-400 font-semibold'
+          onClick={() => setActiveTab('cart-orders')}
+          className={`flex flex-col items-center justify-center gap-1 flex-1 h-full relative transition-all ${
+            activeTab === 'cart-orders' ? 'text-slate-950 font-black' : 'text-slate-400 font-semibold'
           }`}
         >
-          <Star className="w-5 h-5" strokeWidth={1.75} />
-          <span className="text-[10px] leading-none">Reviews</span>
+          <div className="relative">
+            <ClipboardList className="w-5 h-5" strokeWidth={1.75} />
+            {cartItems.length > 0 && (
+              <span className="absolute -top-1 -right-1 h-2 w-2 bg-amber-500 rounded-full animate-pulse" />
+            )}
+          </div>
+          <span className="text-[10px] leading-none">Cart & Orders</span>
         </button>
 
       </nav>
@@ -1231,7 +1607,6 @@ export const PublicTable: React.FC = () => {
         onConfirm={() => {
           clearCart();
           setIsClearCartModalOpen(false);
-          setIsCartSheetOpen(false);
           toast('Basket cleared', 'info');
         }}
         onCancel={() => setIsClearCartModalOpen(false)}
@@ -1376,131 +1751,6 @@ export const PublicTable: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* ==========================================
-          CART VIEW DRAWER/SHEET
-          ========================================== */}
-      <AnimatePresence>
-        {isCartSheetOpen && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center">
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
-              onClick={() => setIsCartSheetOpen(false)}
-            />
-
-            {/* Cart Sheet */}
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 24, stiffness: 240 }}
-              className="relative bg-white w-full max-w-xl rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto font-sans flex flex-col"
-            >
-              <div className="w-12 h-1 bg-slate-200 rounded-full mx-auto my-3 shrink-0" />
-
-              <button
-                onClick={() => setIsCartSheetOpen(false)}
-                className="absolute right-4 top-4 bg-slate-100 hover:bg-slate-200 p-1.5 rounded-full text-slate-500 hover:text-slate-700 z-10"
-              >
-                <X className="w-5 h-5" strokeWidth={1.75} />
-              </button>
-
-              <div className="flex-1 overflow-y-auto p-5 pb-8 flex flex-col justify-between h-full space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="font-display text-3xl font-normal text-slate-900 tracking-tight">Your Basket</h3>
-                    <button
-                      onClick={() => setIsClearCartModalOpen(true)}
-                      className="text-xs font-semibold text-red-500 hover:text-red-700 flex items-center gap-1 py-1 px-2.5 rounded-lg hover:bg-red-50"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" strokeWidth={1.75} />
-                      Clear Basket
-                    </button>
-                  </div>
-
-                  <div className="divide-y divide-slate-100 space-y-3">
-                    {cartItems.map((item, _idx) => {
-                      const failedCheck = failedOrderDetails.find((f) => f.menuItemId === item.itemId);
-                      const isFailed = !!failedCheck;
-
-                      return (
-                        <div
-                          key={_idx}
-                          className={`flex gap-4 py-3 first:pt-0 rounded-xl transition-all ${
-                            isFailed ? 'bg-red-50/50 p-3 border border-red-200/50' : ''
-                          }`}
-                        >
-                          <div className="flex-1 space-y-1">
-                            <h4 className="text-sm font-bold text-slate-900 leading-snug">{item.name}</h4>
-                            {item.selectedAddOns.length > 0 && (
-                              <p className="text-[11px] text-slate-500">+ {item.selectedAddOns.map((x) => x.name).join(', ')}</p>
-                            )}
-                            {item.specialInstructions && (
-                              <p className="text-[11px] text-amber-600 bg-amber-50/50 rounded-lg px-2 py-1 inline-block italic font-medium">
-                                Note: "{item.specialInstructions}"
-                              </p>
-                            )}
-                            {isFailed && <p className="text-[11px] font-bold text-red-600 mt-1">⚠️ Menu item unavailable.</p>}
-                            <p className="text-xs font-bold text-slate-800">{formatPrice(item.price, currency)} each</p>
-                          </div>
-
-                          <div className="flex flex-col items-end justify-between shrink-0">
-                            <span className="text-sm font-black text-slate-900 font-mono">{formatPrice(item.price * item.quantity, currency)}</span>
-                            <div className="flex items-center border border-slate-200 rounded-xl bg-slate-50 p-0.5 mt-2">
-                              <button
-                                onClick={() => updateQuantity(item.itemId, item.selectedAddOns, item.specialInstructions || '', -1)}
-                                className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
-                              >
-                                <Minus className="w-3.5 h-3.5" strokeWidth={2} />
-                              </button>
-                              <span className="px-2 font-bold text-slate-900 text-xs font-mono w-6 text-center">{item.quantity}</span>
-                              <button
-                                onClick={() => updateQuantity(item.itemId, item.selectedAddOns, item.specialInstructions || '', 1)}
-                                className="p-1 text-slate-500 hover:text-slate-800 transition-colors rounded-lg hover:bg-white active:scale-95"
-                              >
-                                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 pt-5 space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-950 uppercase tracking-wide">Kitchen Cooking Notes</label>
-                    <textarea
-                      rows={2}
-                      placeholder="Add a special note..."
-                      value={customerNote}
-                      onChange={(e) => setCustomerNote(e.target.value)}
-                      className="w-full p-3 border border-slate-150 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--theme-accent)]/30 focus:border-[var(--theme-accent)] text-xs placeholder:text-slate-400"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500 font-medium text-sm">Basket Subtotal</span>
-                    <span className="text-xl font-black text-slate-900 font-mono">{formatPrice(cartSubtotal, currency)}</span>
-                  </div>
-
-                  <button
-                    onClick={handleCheckoutTrigger}
-                    disabled={cartItems.length === 0}
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-sm tracking-wide transition-all shadow-md active:scale-[0.99]"
-                  >
-                    Confirm & Proceed
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       {/* ==========================================
           MOBILE NUMBER AND OTP CHECKOUT DIALOG
