@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -28,11 +28,17 @@ import {
   ShieldCheck,
   Receipt,
   ClipboardList,
+  ChefHat,
+  Utensils,
+  ArrowLeft,
+  XCircle,
 } from 'lucide-react';
 import { publicService, PublicCategory, MenuItem, AddOn } from '../services/restaurant.service';
 import { useCartStore } from '../store/useCartStore';
 import { useToast } from '../hooks/useToast';
 import apiClient from '../lib/api';
+import { useSocket, ConnectionStatus } from '../hooks/useSocket';
+import ConnectionIndicator from '../components/ConnectionIndicator';
 
 // ==========================================
 // HELPERS
@@ -100,12 +106,372 @@ const MenuSkeleton = () => (
 );
 
 // ==========================================
+// TIMELINE COMPONENT (WITH ANIMATED CONNECTING LINES)
+// ==========================================
+const TIMELINE_STEPS = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'];
+const TIMELINE_LABELS = ['Placed', 'Accepted', 'Preparing', 'Ready', 'Served'];
+const TIMELINE_ICONS = [Clock, CheckCircle2, ChefHat, Utensils, CheckCircle2];
+
+interface TimelineProps {
+  currentStatus: string;
+}
+
+const Timeline: React.FC<TimelineProps> = ({ currentStatus }) => {
+  const currentIndex = TIMELINE_STEPS.indexOf(currentStatus);
+
+  if (currentStatus === 'CANCELLED') return null;
+
+  return (
+    <div className="w-full bg-white rounded-3xl p-6 border border-slate-150 shadow-sm space-y-6">
+      <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider text-center block border-b border-slate-50 pb-2">
+        Preparation Timeline
+      </h4>
+      <div className="relative flex justify-between items-center w-full px-2">
+        {/* Animated Connecting Line Track */}
+        <div className="absolute left-6 right-6 top-[15px] h-1 bg-slate-100 -z-10 rounded" />
+
+        {/* Active fill line drawing itself */}
+        <motion.div
+          className="absolute left-6 top-[15px] h-1 bg-emerald-500 -z-10 rounded origin-left"
+          initial={{ width: '0%' }}
+          animate={{
+            width: currentIndex > 0 ? `${(currentIndex / (TIMELINE_STEPS.length - 1)) * 90}%` : '0%',
+          }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        />
+
+        {TIMELINE_STEPS.map((step, idx) => {
+          const StepIcon = TIMELINE_ICONS[idx];
+          const isCompleted = idx <= currentIndex;
+          const isCurrent = idx === currentIndex;
+
+          return (
+            <div key={step} className="flex flex-col items-center space-y-2 relative">
+              {/* Timeline Node dot */}
+              <motion.div
+                layout
+                animate={{
+                  scale: isCurrent ? 1.25 : 1.0,
+                  backgroundColor: isCurrent ? '#10B981' : isCompleted ? '#34D399' : '#F1F5F9',
+                  borderColor: isCurrent ? '#D1FAE5' : isCompleted ? '#E2E8F0' : '#E2E8F0',
+                }}
+                transition={{ duration: 0.3, ease: 'easeInOut' }}
+                className={`w-8 h-8 rounded-full flex items-center justify-center border-2 text-[10px] ${
+                  isCompleted ? 'text-white' : 'text-slate-400'
+                } shadow-sm relative`}
+              >
+                <StepIcon className="w-4 h-4" strokeWidth={isCurrent ? 2.5 : 1.75} />
+              </motion.div>
+
+              {/* Label */}
+              <span
+                className={`text-[10px] font-bold tracking-wide transition-colors ${
+                  isCurrent ? 'text-emerald-600 font-extrabold' : isCompleted ? 'text-slate-800' : 'text-slate-400'
+                }`}
+              >
+                {TIMELINE_LABELS[idx]}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// ORDER TRACKER COMPONENT (INLINE INDEPENDENT POLLED/WS SCREEN)
+// ==========================================
+interface OrderTrackerProps {
+  orderId: string;
+  currency: string;
+  taxRatePercent: number;
+  onBack: () => void;
+}
+
+const OrderTracker: React.FC<OrderTrackerProps> = ({
+  orderId,
+  currency,
+  taxRatePercent,
+  onBack,
+}) => {
+  const { socket, status: connectionStatus } = useSocket(null);
+  const [liveStatus, setLiveStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!socket || !orderId) return;
+
+    // Join public order room
+    socket.emit('join_order', { orderId });
+
+    socket.on('order:status_updated', (data: { orderId: string; status: string }) => {
+      if (data.orderId === orderId) {
+        setLiveStatus(data.status);
+      }
+    });
+
+    return () => {
+      socket.off('order:status_updated');
+    };
+  }, [socket, orderId]);
+
+  // Query order details
+  const { data: orderData, isLoading: isOrderLoading, error } = useQuery({
+    queryKey: ['publicOrderDetails', orderId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/public/orders/${orderId}`);
+      return res.data;
+    },
+    enabled: !!orderId,
+    retry: false,
+  });
+
+  const [animationCompleted, setAnimationCompleted] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setAnimationCompleted(true);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isOrderLoading) {
+    return (
+      <div className="py-12 bg-white rounded-3xl border border-slate-150 p-8 flex items-center justify-center">
+        <Loader className="w-6 h-6 animate-spin text-amber-500" />
+      </div>
+    );
+  }
+
+  if (error || !orderData?.success) {
+    return (
+      <div className="bg-white p-8 rounded-3xl border border-slate-150 text-center space-y-4">
+        <div className="h-12 w-12 bg-red-50 rounded-2xl flex items-center justify-center text-red-500 mx-auto">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-sm font-bold text-slate-800">Order Error</h4>
+          <p className="text-xs text-slate-400">Could not load this order. Please reach out to table service.</p>
+        </div>
+        <button
+          onClick={onBack}
+          className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-semibold"
+        >
+          Go Back
+        </button>
+      </div>
+    );
+  }
+
+  const order = orderData.data;
+  const currentStatus = liveStatus || order.status;
+
+  const statusDetails: Record<string, { title: string; desc: string; icon: React.ReactNode; color: string }> = {
+    PENDING: {
+      title: 'Order Placed',
+      desc: 'Waiting for the kitchen to accept your order.',
+      icon: <Clock className="w-6 h-6 text-amber-500" strokeWidth={1.75} />,
+      color: 'bg-amber-50 border-amber-100 text-amber-800',
+    },
+    ACCEPTED: {
+      title: 'Order Accepted',
+      desc: 'Our staff has accepted your order and is queuing it.',
+      icon: <CheckCircle2 className="w-6 h-6 text-emerald-500" strokeWidth={1.75} />,
+      color: 'bg-emerald-50 border-emerald-100 text-emerald-800',
+    },
+    PREPARING: {
+      title: 'Preparing',
+      desc: 'Our chefs are handcrafting your food right now!',
+      icon: <ChefHat className="w-6 h-6 text-indigo-500" strokeWidth={1.75} />,
+      color: 'bg-indigo-50 border-indigo-100 text-indigo-800',
+    },
+    READY: {
+      title: 'Ready for Pickup',
+      desc: 'Your order is hot, ready, and heading to your table!',
+      icon: <Utensils className="w-6 h-6 text-purple-500" strokeWidth={1.75} />,
+      color: 'bg-purple-50 border-purple-100 text-purple-800',
+    },
+    SERVED: {
+      title: 'Served',
+      desc: 'Enjoy your meal! Let us know if you need anything else.',
+      icon: <CheckCircle2 className="w-6 h-6 text-blue-500" strokeWidth={1.75} />,
+      color: 'bg-blue-50 border-blue-100 text-blue-800',
+    },
+    CANCELLED: {
+      title: 'Cancelled',
+      desc: 'This order was cancelled. Please speak to staff for details.',
+      icon: <XCircle className="w-6 h-6 text-red-500" strokeWidth={1.75} />,
+      color: 'bg-red-50 border-red-100 text-red-800',
+    },
+  };
+
+  const currentStatusInfo = statusDetails[currentStatus] || {
+    title: 'Processing',
+    desc: 'Checking order status...',
+    icon: <Clock className="w-6 h-6 text-slate-500" strokeWidth={1.75} />,
+    color: 'bg-slate-50 border-slate-100 text-slate-800',
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header bar within tab */}
+      <div className="flex items-center justify-between pb-2">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white shadow-sm border border-slate-150 py-1.5 px-3 rounded-full transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
+          Back to list
+        </button>
+        <div className="flex items-center gap-2">
+          <ConnectionIndicator status={connectionStatus as ConnectionStatus} />
+          <span className="text-xs font-mono font-bold text-slate-400">Order #{order.orderNumber}</span>
+        </div>
+      </div>
+
+      {currentStatus !== 'CANCELLED' ? (
+        <div className="bg-white rounded-3xl p-6 border border-slate-150 shadow-sm text-center flex flex-col items-center py-8 space-y-4">
+          <div className="relative">
+            <svg
+              className="w-16 h-16 text-emerald-500"
+              viewBox="0 0 52 52"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3.5"
+            >
+              <circle cx="26" cy="26" r="23" className="stroke-emerald-100" />
+              <motion.path
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                d="M14 27l8 8 16-16"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-display tracking-tight text-2xl font-normal text-slate-900">
+              Order Confirmed!
+            </h4>
+            <p className="text-xs text-slate-400 font-medium">
+              Your kitchen dispatch ticket is active
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-red-50/50 rounded-3xl p-6 border border-red-150 shadow-sm text-center flex flex-col items-center py-8 space-y-4">
+          <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center text-red-600">
+            <X className="w-6 h-6" strokeWidth={2.5} />
+          </div>
+          <div className="space-y-1">
+            <h4 className="font-display tracking-tight text-2xl font-normal text-red-900">
+              Order Cancelled
+            </h4>
+            <p className="text-xs text-red-500 font-medium">
+              This order was cancelled by dining staff.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Live Polled Status Details */}
+      <AnimatePresence>
+        {animationCompleted && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`p-4 rounded-2xl border flex items-start gap-4 shadow-sm ${currentStatusInfo.color}`}
+          >
+            <div className="bg-white p-2 rounded-xl shadow-sm shrink-0">
+              {currentStatusInfo.icon}
+            </div>
+            <div className="space-y-1 text-left">
+              <h5 className="text-sm font-bold leading-tight">{currentStatusInfo.title}</h5>
+              <p className="text-xs opacity-90 leading-relaxed">{currentStatusInfo.desc}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Live timeline */}
+      {currentStatus !== 'CANCELLED' && animationCompleted && (
+        <Timeline currentStatus={currentStatus} />
+      )}
+
+      {/* Receipt summary */}
+      <AnimatePresence>
+        {animationCompleted && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4 text-left"
+          >
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Receipt className="w-5 h-5 text-slate-400" strokeWidth={1.75} />
+              <h5 className="text-sm font-bold text-slate-900">Receipt Summary</h5>
+            </div>
+
+            <div className="divide-y divide-slate-50 space-y-2.5">
+              {order.items.map((item: any, idx: number) => (
+                <div key={idx} className="flex justify-between py-1.5 first:pt-0">
+                  <div>
+                    <h6 className="text-xs font-bold text-slate-900">
+                      {item.nameSnapshot} <span className="font-mono text-slate-400">x{item.quantity}</span>
+                    </h6>
+                    {item.selectedAddOns.length > 0 && (
+                      <p className="text-[10px] text-slate-400">
+                        + {item.selectedAddOns.map((x: any) => x.name).join(', ')}
+                      </p>
+                    )}
+                    {item.specialInstructions && (
+                      <p className="text-[10px] text-amber-600 bg-amber-50/50 rounded px-1.5 py-0.5 inline-block mt-1 italic font-medium">
+                        Note: "{item.specialInstructions}"
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs font-bold font-mono text-slate-900">
+                    {formatPrice(item.unitPriceSnapshot * item.quantity, currency)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs text-slate-500">
+              <div className="flex justify-between font-medium">
+                <span>Subtotal</span>
+                <span className="font-mono">{formatPrice(order.subtotal, currency)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>VAT / Taxes ({taxRatePercent}%)</span>
+                <span className="font-mono">{formatPrice(order.tax, currency)}</span>
+              </div>
+              <div className="flex justify-between text-slate-900 font-bold text-sm border-t border-slate-50 pt-2">
+                <span>Grand Total</span>
+                <span className="font-mono">{formatPrice(order.total, currency)}</span>
+              </div>
+            </div>
+
+            {order.customerNote && (
+              <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
+                <span className="font-bold text-slate-600 block mb-1">Customer Note:</span>
+                <p className="text-slate-500 leading-relaxed italic">"{order.customerNote}"</p>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+// ==========================================
 // MAIN COMPONENT
 // ==========================================
 
 export const PublicTable: React.FC = () => {
   const { restaurantSlug, tableToken } = useParams<{ restaurantSlug: string; tableToken: string }>();
-  const navigate = useNavigate();
   const { toast } = useToast();
 
   // Zustand Cart Store
@@ -114,6 +480,7 @@ export const PublicTable: React.FC = () => {
   // Primary Bottom Tab: 'landing' | 'menu' | 'waiter' | 'cart-orders'
   const [activeTab, setActiveTab] = useState<'landing' | 'menu' | 'waiter' | 'cart-orders'>('landing');
   const [cartOrdersSubTab, setCartOrdersSubTab] = useState<'cart' | 'orders'>('cart');
+  const [activeTrackingOrderId, setActiveTrackingOrderId] = useState<string | null>(null);
 
   const [recentOrderIds, setRecentOrderIds] = useState<string[]>([]);
   const [recentWaiterCalls, setRecentWaiterCalls] = useState<{ type: string; timestamp: string }[]>([]);
@@ -487,7 +854,11 @@ export const PublicTable: React.FC = () => {
         setPhoneNumber('');
         setOtpCode('');
         setOtpSent(false);
-        navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${res.data.data._id}`);
+
+        // Switch inline immediately instead of routing away
+        setActiveTab('cart-orders');
+        setCartOrdersSubTab('orders');
+        setActiveTrackingOrderId(res.data.data._id);
       }
     } catch (err: any) {
       console.error('Order placement error:', err);
@@ -633,7 +1004,11 @@ export const PublicTable: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${recentOrderIds[recentOrderIds.length - 1]}`)}
+                  onClick={() => {
+                    setActiveTab('cart-orders');
+                    setCartOrdersSubTab('orders');
+                    setActiveTrackingOrderId(recentOrderIds[recentOrderIds.length - 1]);
+                  }}
                   className="px-3.5 py-2 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm shrink-0 whitespace-nowrap"
                 >
                   <span>Track Status</span>
@@ -933,7 +1308,11 @@ export const PublicTable: React.FC = () => {
                   </div>
                 </div>
                 <button
-                  onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${recentOrderIds[recentOrderIds.length - 1]}`)}
+                  onClick={() => {
+                    setActiveTab('cart-orders');
+                    setCartOrdersSubTab('orders');
+                    setActiveTrackingOrderId(recentOrderIds[recentOrderIds.length - 1]);
+                  }}
                   className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm shrink-0 whitespace-nowrap"
                 >
                   <span>Track Status</span>
@@ -1389,7 +1768,14 @@ export const PublicTable: React.FC = () => {
           {/* Sub Tab: ORDERS */}
           {cartOrdersSubTab === 'orders' && (
             <div className="space-y-6">
-              {recentOrderIds.length === 0 ? (
+              {activeTrackingOrderId ? (
+                <OrderTracker
+                  orderId={activeTrackingOrderId}
+                  currency={currency}
+                  taxRatePercent={restaurant.taxRatePercent || 0}
+                  onBack={() => setActiveTrackingOrderId(null)}
+                />
+              ) : recentOrderIds.length === 0 ? (
                 <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-4">
                   <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 mx-auto">
                     <Clock className="w-6 h-6 animate-pulse" strokeWidth={1.75} />
@@ -1416,7 +1802,7 @@ export const PublicTable: React.FC = () => {
                   Error loading orders. Please contact service.
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-4 font-sans">
                   {[...recentOrdersData].reverse().map((order: any, idx) => {
                     // Status Badge colors
                     const statusColors: Record<string, string> = {
@@ -1434,7 +1820,7 @@ export const PublicTable: React.FC = () => {
                     return (
                       <div
                         key={order._id || idx}
-                        className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4"
+                        className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4 text-left"
                       >
                         <div className="flex items-center justify-between border-b border-slate-50 pb-2.5">
                           <div className="space-y-0.5">
@@ -1475,7 +1861,9 @@ export const PublicTable: React.FC = () => {
                             </span>
                           </div>
                           <button
-                            onClick={() => navigate(`/r/${restaurantSlug}/t/${tableToken}/order/${order._id}`)}
+                            onClick={() => {
+                              setActiveTrackingOrderId(order._id);
+                            }}
                             className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm"
                           >
                             <span>Track Status</span>
