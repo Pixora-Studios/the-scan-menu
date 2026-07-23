@@ -1,7 +1,8 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { Order, OrderStatus } from '../models/Order';
-import { validateStatusTransition } from '../utils/orderStateMachine';
+import { TableSession } from '../models/TableSession';
+import { validateStatusTransition, getOrderStatusRollup } from '../utils/orderStateMachine';
 import { sendSuccess, sendError } from '../utils/response';
 import { NotificationService } from '../services/notification.service';
 import mongoose from 'mongoose';
@@ -14,6 +15,9 @@ export class OrderController {
     this.updateOrderStatus = this.updateOrderStatus.bind(this);
     this.cancelOrder = this.cancelOrder.bind(this);
     this.getAnalytics = this.getAnalytics.bind(this);
+    this.updateItemStatus = this.updateItemStatus.bind(this);
+    this.getTableSession = this.getTableSession.bind(this);
+    this.closeTableSession = this.closeTableSession.bind(this);
   }
 
   async getAnalytics(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
@@ -356,6 +360,185 @@ export class OrderController {
       }
 
       sendSuccess(res, order, 'Order cancelled successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateItemStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId, orderId, itemIndex: itemIndexStr } = req.params;
+      const { itemStatus: nextItemStatus } = req.body;
+
+      const itemIndex = parseInt(itemIndexStr, 10);
+
+      if (isNaN(itemIndex) || !nextItemStatus) {
+        sendError(res, 'BAD_REQUEST', 'Item index and itemStatus are required', null, 400);
+        return;
+      }
+
+      if (!['PENDING', 'PREPARING', 'READY', 'SERVED'].includes(nextItemStatus)) {
+        sendError(res, 'BAD_REQUEST', 'Invalid itemStatus value', null, 400);
+        return;
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(orderId)) {
+        sendError(res, 'ORDER_NOT_FOUND', 'Order not found', null, 404);
+        return;
+      }
+
+      const order = await Order.findOne({
+        _id: new mongoose.Types.ObjectId(orderId),
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      });
+
+      if (!order) {
+        sendError(res, 'ORDER_NOT_FOUND', 'Order not found', null, 404);
+        return;
+      }
+
+      if (itemIndex < 0 || itemIndex >= order.items.length) {
+        sendError(res, 'BAD_REQUEST', 'Invalid item index', null, 400);
+        return;
+      }
+
+      const item = order.items[itemIndex];
+      const currentItemStatus = item.itemStatus || 'PENDING';
+
+      // Validate simple forward-only transitions (PENDING -> PREPARING -> READY -> SERVED), no skipping backwards.
+      const statusSeverity = { PENDING: 0, PREPARING: 1, READY: 2, SERVED: 3 };
+      if (statusSeverity[nextItemStatus] < statusSeverity[currentItemStatus]) {
+        sendError(res, 'BAD_REQUEST', `Cannot change item status backwards from ${currentItemStatus} to ${nextItemStatus}`, null, 400);
+        return;
+      }
+
+      item.itemStatus = nextItemStatus as any;
+      if (nextItemStatus === 'SERVED') {
+        item.servedAt = new Date();
+      }
+
+      const previousAggregateStatus = order.status;
+
+      // This will trigger pre-save hook and save
+      await order.save();
+
+      // Emit item status updated via socket
+      try {
+        NotificationService.getInstance().notifyItemStatusUpdated(
+          order.restaurantId.toString(),
+          order._id.toString(),
+          itemIndex,
+          nextItemStatus,
+          order.updatedAt
+        );
+      } catch (err) {
+        console.error('Failed to notify item status update:', err);
+      }
+
+      // If aggregate status changed as a result of item update, emit order:status_updated
+      if (order.status !== previousAggregateStatus) {
+        try {
+          NotificationService.getInstance().notifyOrderStatusUpdated(
+            order.restaurantId.toString(),
+            order._id.toString(),
+            order.status,
+            order.updatedAt
+          );
+        } catch (err) {
+          console.error('Failed to notify order status update from item status update:', err);
+        }
+      }
+
+      // Also notify session updated (as totals / rounds progress)
+      if (order.sessionId) {
+        try {
+          const session = await TableSession.findById(order.sessionId);
+          if (session) {
+            NotificationService.getInstance().notifySessionUpdated(
+              order.restaurantId.toString(),
+              session._id.toString(),
+              session
+            );
+          }
+        } catch (err) {
+          console.error('Failed to notify session update:', err);
+        }
+      }
+
+      sendSuccess(res, order, 'Item status updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getTableSession(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId, sessionId } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        sendError(res, 'SESSION_NOT_FOUND', 'Session not found', null, 404);
+        return;
+      }
+
+      const session = await TableSession.findOne({
+        _id: new mongoose.Types.ObjectId(sessionId),
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      });
+
+      if (!session) {
+        sendError(res, 'SESSION_NOT_FOUND', 'Session not found', null, 404);
+        return;
+      }
+
+      const orders = await Order.find({ sessionId: session._id }).sort({ roundNumber: 1 });
+
+      sendSuccess(res, { session, orders }, 'Session retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async closeTableSession(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { restaurantId, sessionId } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        sendError(res, 'SESSION_NOT_FOUND', 'Session not found', null, 404);
+        return;
+      }
+
+      const session = await TableSession.findOne({
+        _id: new mongoose.Types.ObjectId(sessionId),
+        restaurantId: new mongoose.Types.ObjectId(restaurantId),
+      });
+
+      if (!session) {
+        sendError(res, 'SESSION_NOT_FOUND', 'Session not found', null, 404);
+        return;
+      }
+
+      session.status = 'CLOSED';
+      session.closedAt = new Date();
+      await session.save();
+
+      // Settle payment status on all orders inside the session to PAID
+      await Order.updateMany(
+        { sessionId: session._id },
+        { $set: { paymentStatus: 'PAID' } }
+      );
+
+      // Notify session updated
+      try {
+        NotificationService.getInstance().notifySessionUpdated(
+          session.restaurantId.toString(),
+          session._id.toString(),
+          session
+        );
+      } catch (err) {
+        console.error('Failed to notify session update:', err);
+      }
+
+      sendSuccess(res, session, 'Table session closed and settled successfully');
     } catch (error) {
       next(error);
     }

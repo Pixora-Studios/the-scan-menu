@@ -63,6 +63,7 @@ router.get('/restaurants/:restaurantSlug/tables/:tableToken/menu', publicGetLimi
 router.post('/restaurants/:restaurantSlug/tables/:tableToken/orders', orderCreationLimiter, publicController.createOrder);
 router.get('/orders/:orderId', publicGetLimiter, publicController.getOrder);
 router.get('/orders/:orderId/status', publicGetLimiter, publicController.getOrderStatus);
+router.get('/table-sessions/:sessionId', publicGetLimiter, publicController.getTableSession);
 
 // Public Waiter Call Endpoints (Assistance limited to 5 calls/5 mins)
 router.post('/tables/:tableToken/waiter-call', waiterCallLimiter, waiterCallController.createWaiterCall);

@@ -16,6 +16,53 @@ export interface TransitionResult {
 }
 
 /**
+ * Computes the aggregate rollup status of an order based on item-level status and ticket acceptance.
+ */
+export function computeOrderStatus(
+  items: { itemStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' }[],
+  ticketAccepted: boolean,
+  isCancelled: boolean = false
+): OrderStatus {
+  if (isCancelled) {
+    return 'CANCELLED';
+  }
+
+  if (!items || items.length === 0) {
+    return ticketAccepted ? 'ACCEPTED' : 'PENDING';
+  }
+
+  const allServed = items.every((item) => item.itemStatus === 'SERVED');
+  if (allServed) {
+    return 'SERVED';
+  }
+
+  const allAtLeastReady = items.every(
+    (item) => item.itemStatus === 'READY' || item.itemStatus === 'SERVED'
+  );
+  if (allAtLeastReady) {
+    return 'READY';
+  }
+
+  const anyPreparingOrReady = items.some(
+    (item) => item.itemStatus === 'PREPARING' || item.itemStatus === 'READY'
+  );
+  if (anyPreparingOrReady) {
+    return 'PREPARING';
+  }
+
+  return ticketAccepted ? 'ACCEPTED' : 'PENDING';
+}
+
+/**
+ * Convenience helper to calculate order status from an Order document.
+ */
+export function getOrderStatusRollup(order: { status: OrderStatus; items: { itemStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' }[] }): OrderStatus {
+  const isCancelled = order.status === 'CANCELLED';
+  const ticketAccepted = order.status !== 'PENDING' && order.status !== 'CANCELLED';
+  return computeOrderStatus(order.items, ticketAccepted, isCancelled);
+}
+
+/**
  * Validates whether an order can transition from its current status to a next status,
  * taking into account the user's role permissions (e.g. STAFF vs MANAGER).
  */

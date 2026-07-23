@@ -4,6 +4,8 @@ import { Table } from '../models/Table';
 import { Category } from '../models/Category';
 import { MenuItem } from '../models/MenuItem';
 import { Order, OrderCounter } from '../models/Order';
+import { TableSession } from '../models/TableSession';
+import { getOrderStatusRollup } from '../utils/orderStateMachine';
 import { IntegrationSyncLog } from '../models/IntegrationSyncLog';
 import { IntegrationFactory } from '../integrations/core/IntegrationFactory';
 import { sendSuccess, sendError } from '../utils/response';
@@ -17,6 +19,7 @@ export class PublicController {
     this.createOrder = this.createOrder.bind(this);
     this.getOrder = this.getOrder.bind(this);
     this.getOrderStatus = this.getOrderStatus.bind(this);
+    this.getTableSession = this.getTableSession.bind(this);
   }
 
   async resolveTable(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -42,6 +45,13 @@ export class PublicController {
         return;
       }
 
+      // Look up active OPEN table session if any
+      const activeSession = await TableSession.findOne({
+        restaurantId: restaurant._id,
+        tableId: table._id,
+        status: 'OPEN',
+      });
+
       // Success payload
       const responseData = {
         restaurant: {
@@ -61,6 +71,7 @@ export class PublicController {
           displayName: table.displayName,
           tableNumber: table.tableNumber,
           token: table.token,
+          activeSessionId: activeSession ? activeSession._id : null,
         },
       };
 
@@ -223,6 +234,8 @@ export class PublicController {
           quantity: item.quantity || 1,
           selectedAddOns,
           specialInstructions: item.specialInstructions || '',
+          prepTimeMinutesSnapshot: menuItem.prepTimeMinutes,
+          itemStatus: 'PENDING',
         });
       }
 
@@ -243,32 +256,96 @@ export class PublicController {
       const tax = Math.round(subtotal * ((restaurant.taxRatePercent || 0) / 100));
       const total = subtotal + tax;
 
-      // 6. Generate sequential orderNumber atomically
-      const counter = await OrderCounter.findOneAndUpdate(
-        { restaurantId: restaurant._id },
-        { $inc: { seq: 1 } },
-        { upsert: true, new: true }
-      );
-      const orderNumber = counter.seq;
-
-      // 7. Create the Order
-      const order = new Order({
+      // 5b. Resolve or create TableSession
+      let session = await TableSession.findOne({
         restaurantId: restaurant._id,
         tableId: table._id,
-        orderNumber,
-        items: validatedItems,
-        subtotal,
-        tax,
-        total,
-        customerNote: customerNote || '',
-        status: 'PENDING',
-        source: 'QR',
-        customerPhone: customerPhone || undefined,
-        paymentStatus: paymentStatus || 'PENDING',
-        integrationMetadata: {},
+        status: 'OPEN',
       });
 
-      await order.save();
+      let isNewSession = false;
+      if (!session) {
+        isNewSession = true;
+        session = new TableSession({
+          restaurantId: restaurant._id,
+          tableId: table._id,
+          status: 'OPEN',
+          roundCount: 1,
+          subtotal: 0,
+          tax: 0,
+          total: 0,
+          openedAt: new Date(),
+        });
+        await session.save();
+      }
+
+      let order: any;
+      let isMerge = false;
+
+      if (!isNewSession) {
+        const mostRecentOrder = await Order.findOne({ sessionId: session._id }).sort({ createdAt: -1 });
+        if (mostRecentOrder && mostRecentOrder.status === 'PENDING') {
+          isMerge = true;
+          order = mostRecentOrder;
+
+          // Append new validated items to existing order items
+          order.items.push(...validatedItems);
+
+          // Recompute order totals
+          order.subtotal = order.items.reduce((sum: number, item: any) => sum + item.unitPriceSnapshot * item.quantity, 0);
+          order.tax = Math.round(order.subtotal * ((restaurant.taxRatePercent || 0) / 100));
+          order.total = order.subtotal + order.tax;
+          order.isMerged = true;
+          if (customerNote) {
+            order.customerNote = order.customerNote ? `${order.customerNote}\n${customerNote}` : customerNote;
+          }
+
+          await order.save();
+        }
+      }
+
+      if (!isMerge) {
+        // New round / order needed
+        if (!isNewSession) {
+          session.roundCount += 1;
+          await session.save();
+        }
+
+        const counter = await OrderCounter.findOneAndUpdate(
+          { restaurantId: restaurant._id },
+          { $inc: { seq: 1 } },
+          { upsert: true, new: true }
+        );
+        const orderNumber = counter.seq;
+
+        order = new Order({
+          restaurantId: restaurant._id,
+          tableId: table._id,
+          sessionId: session._id,
+          roundNumber: session.roundCount,
+          isMerged: false,
+          orderNumber,
+          items: validatedItems,
+          subtotal,
+          tax,
+          total,
+          customerNote: customerNote || '',
+          status: 'PENDING',
+          source: 'QR',
+          customerPhone: customerPhone || undefined,
+          paymentStatus: paymentStatus || 'PENDING',
+          integrationMetadata: {},
+        });
+
+        await order.save();
+      }
+
+      // Update session totals based on sum of all orders in this session
+      const allOrdersInSession = await Order.find({ sessionId: session._id });
+      session.subtotal = allOrdersInSession.reduce((sum, o) => sum + o.subtotal, 0);
+      session.tax = allOrdersInSession.reduce((sum, o) => sum + o.tax, 0);
+      session.total = allOrdersInSession.reduce((sum, o) => sum + o.total, 0);
+      await session.save();
 
       // Trigger POS integration push as an asynchronous, non-blocking side-effect
       try {
@@ -297,32 +374,49 @@ export class PublicController {
         console.error('Failed to trigger POS integration sync:', integrationErr);
       }
 
-      // Emit order:created via central NotificationService
+      // Emit central socket events
       try {
-        const orderSummary = {
-          _id: order._id,
-          restaurantId: order.restaurantId,
-          tableId: {
-            _id: table._id,
-            displayName: table.displayName,
-            tableNumber: table.tableNumber,
-          },
-          orderNumber: order.orderNumber,
-          items: order.items,
-          subtotal: order.subtotal,
-          tax: order.tax,
-          total: order.total,
-          customerNote: order.customerNote,
-          status: order.status,
-          source: order.source,
-          createdAt: order.createdAt,
-        };
-        NotificationService.getInstance().notifyOrderCreated(order.restaurantId.toString(), orderSummary);
+        if (isMerge) {
+          // Emit order:status_updated and session:updated
+          NotificationService.getInstance().notifyOrderStatusUpdated(
+            order.restaurantId.toString(),
+            order._id.toString(),
+            order.status,
+            order.updatedAt
+          );
+        } else {
+          // Emit order:created and session:updated
+          const orderSummary = {
+            _id: order._id,
+            restaurantId: order.restaurantId,
+            tableId: {
+              _id: table._id,
+              displayName: table.displayName,
+              tableNumber: table.tableNumber,
+            },
+            sessionId: order.sessionId,
+            roundNumber: order.roundNumber,
+            isMerged: order.isMerged,
+            orderNumber: order.orderNumber,
+            items: order.items,
+            subtotal: order.subtotal,
+            tax: order.tax,
+            total: order.total,
+            customerNote: order.customerNote,
+            status: order.status,
+            source: order.source,
+            createdAt: order.createdAt,
+          };
+          NotificationService.getInstance().notifyOrderCreated(order.restaurantId.toString(), orderSummary);
+        }
+
+        // Notify that table session was updated
+        NotificationService.getInstance().notifySessionUpdated(restaurant._id.toString(), session._id.toString(), session);
       } catch (err) {
-        console.error('Failed to notify order creation:', err);
+        console.error('Failed to notify order changes:', err);
       }
 
-      sendSuccess(res, order, 'Order placed successfully', 201);
+      sendSuccess(res, order, isMerge ? 'Order merged into pending round' : 'Order placed successfully', isMerge ? 200 : 201);
     } catch (error) {
       next(error);
     }
@@ -365,6 +459,29 @@ export class PublicController {
       }
 
       sendSuccess(res, { status: order.status }, 'Order status retrieved successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getTableSession(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { sessionId } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        sendError(res, 'SESSION_NOT_FOUND', 'Session not found', null, 404);
+        return;
+      }
+
+      const session = await TableSession.findById(sessionId);
+      if (!session) {
+        sendError(res, 'SESSION_NOT_FOUND', 'Session not found', null, 404);
+        return;
+      }
+
+      const orders = await Order.find({ sessionId: session._id }).sort({ roundNumber: 1 });
+
+      sendSuccess(res, { session, orders }, 'Session retrieved successfully');
     } catch (error) {
       next(error);
     }
