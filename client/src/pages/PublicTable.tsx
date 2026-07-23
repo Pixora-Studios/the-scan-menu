@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -477,10 +477,48 @@ export const PublicTable: React.FC = () => {
   // Zustand Cart Store
   const { items: cartItems, setTable, addItem, updateQuantity, clearCart } = useCartStore();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // Primary Bottom Tab: 'landing' | 'menu' | 'waiter' | 'cart-orders'
-  const [activeTab, setActiveTab] = useState<'landing' | 'menu' | 'waiter' | 'cart-orders'>('landing');
-  const [cartOrdersSubTab, setCartOrdersSubTab] = useState<'cart' | 'orders'>('cart');
-  const [activeTrackingOrderId, setActiveTrackingOrderId] = useState<string | null>(null);
+  const activeTab = (searchParams.get('tab') as 'landing' | 'menu' | 'waiter' | 'cart-orders') || 'landing';
+  const cartOrdersSubTab = (searchParams.get('sub') as 'cart' | 'orders') || 'cart';
+  const activeTrackingOrderId = searchParams.get('trackId') || null;
+
+  const updateNavigationState = (
+    tab: 'landing' | 'menu' | 'waiter' | 'cart-orders',
+    sub?: 'cart' | 'orders',
+    trackId?: string | null
+  ) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', tab);
+      if (sub) {
+        next.set('sub', sub);
+      }
+      if (trackId !== undefined) {
+        if (trackId) {
+          next.set('trackId', trackId);
+        } else {
+          next.delete('trackId');
+        }
+      } else if (tab !== 'cart-orders') {
+        next.delete('trackId');
+      }
+      return next;
+    });
+  };
+
+  const setActiveTab = (tab: 'landing' | 'menu' | 'waiter' | 'cart-orders') => {
+    updateNavigationState(tab);
+  };
+
+  const setCartOrdersSubTab = (sub: 'cart' | 'orders') => {
+    updateNavigationState(activeTab, sub);
+  };
+
+  const setActiveTrackingOrderId = (trackId: string | null) => {
+    updateNavigationState(activeTab, cartOrdersSubTab, trackId);
+  };
 
   const [recentOrderIds, setRecentOrderIds] = useState<string[]>([]);
   const [recentWaiterCalls, setRecentWaiterCalls] = useState<{ type: string; timestamp: string }[]>([]);
@@ -856,9 +894,7 @@ export const PublicTable: React.FC = () => {
         setOtpSent(false);
 
         // Switch inline immediately instead of routing away
-        setActiveTab('cart-orders');
-        setCartOrdersSubTab('orders');
-        setActiveTrackingOrderId(res.data.data._id);
+        updateNavigationState('cart-orders', 'orders', res.data.data._id);
       }
     } catch (err: any) {
       console.error('Order placement error:', err);
@@ -1005,9 +1041,7 @@ export const PublicTable: React.FC = () => {
                 </div>
                 <button
                   onClick={() => {
-                    setActiveTab('cart-orders');
-                    setCartOrdersSubTab('orders');
-                    setActiveTrackingOrderId(recentOrderIds[recentOrderIds.length - 1]);
+                    updateNavigationState('cart-orders', 'orders', recentOrderIds[recentOrderIds.length - 1]);
                   }}
                   className="px-3.5 py-2 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm shrink-0 whitespace-nowrap"
                 >
@@ -1309,9 +1343,7 @@ export const PublicTable: React.FC = () => {
                 </div>
                 <button
                   onClick={() => {
-                    setActiveTab('cart-orders');
-                    setCartOrdersSubTab('orders');
-                    setActiveTrackingOrderId(recentOrderIds[recentOrderIds.length - 1]);
+                    updateNavigationState('cart-orders', 'orders', recentOrderIds[recentOrderIds.length - 1]);
                   }}
                   className="px-3 py-1.5 bg-slate-950 hover:bg-slate-900 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm shrink-0 whitespace-nowrap"
                 >
@@ -1894,8 +1926,7 @@ export const PublicTable: React.FC = () => {
           >
             <button
               onClick={() => {
-                setActiveTab('cart-orders');
-                setCartOrdersSubTab('cart');
+                updateNavigationState('cart-orders', 'cart');
               }}
               className="w-full bg-slate-950 hover:bg-slate-900 text-white py-3.5 px-5 rounded-2xl font-bold text-sm tracking-wide transition-all shadow-xl flex items-center justify-between border border-slate-800 active:scale-[0.98]"
             >
