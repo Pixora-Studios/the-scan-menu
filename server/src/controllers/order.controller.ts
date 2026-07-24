@@ -406,7 +406,7 @@ export class OrderController {
       const currentItemStatus = item.itemStatus || 'PENDING';
 
       // Validate simple forward-only transitions (PENDING -> PREPARING -> READY -> SERVED), no skipping backwards.
-      const statusSeverity = { PENDING: 0, PREPARING: 1, READY: 2, SERVED: 3 };
+      const statusSeverity: Record<string, number> = { PENDING: 0, PREPARING: 1, READY: 2, SERVED: 3 };
       if (statusSeverity[nextItemStatus] < statusSeverity[currentItemStatus]) {
         sendError(res, 'BAD_REQUEST', `Cannot change item status backwards from ${currentItemStatus} to ${nextItemStatus}`, null, 400);
         return;

@@ -635,7 +635,10 @@ export const PublicTable: React.FC = () => {
   const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
 
   const toggleRound = (roundId: string) => {
-    setExpandedRounds(prev => ({ ...prev, [roundId]: !prev[roundId] }));
+    setExpandedRounds(prev => {
+      const current = prev[roundId] ?? true;
+      return { ...prev, [roundId]: !current };
+    });
   };
 
   // Query public menu
@@ -1874,7 +1877,7 @@ export const PublicTable: React.FC = () => {
                     {/* Compacting Rounds List */}
                     <div className="space-y-4">
                       {orders.map((order: any) => {
-                        const isExpanded = expandedRounds[order._id] !== false;
+                        const isExpanded = expandedRounds[order._id] ?? true;
                         const orderTime = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                         const sortedItems = [...order.items].sort((a, b) => (a.prepTimeMinutesSnapshot || 10) - (b.prepTimeMinutesSnapshot || 10));
 
