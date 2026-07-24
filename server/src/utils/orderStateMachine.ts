@@ -1,13 +1,46 @@
 import { OrderStatus } from '../models/Order';
 
 export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  PENDING: ['ACCEPTED', 'CANCELLED'],
+  PENDING: ['ACCEPTED', 'PREPARING', 'CANCELLED'],
   ACCEPTED: ['PREPARING', 'CANCELLED'],
-  PREPARING: ['READY'],
+  PREPARING: ['READY', 'SERVED'],
   READY: ['SERVED'],
   SERVED: [],
   CANCELLED: [],
 };
+
+export function getWorkflowTransitions(
+  workflowMode: 'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP'
+): Record<OrderStatus, OrderStatus[]> {
+  if (workflowMode === 'THREE_STEP') {
+    return {
+      PENDING: ['PREPARING', 'CANCELLED'],
+      ACCEPTED: ['PREPARING', 'CANCELLED'],
+      PREPARING: ['SERVED'],
+      READY: ['SERVED'],
+      SERVED: [],
+      CANCELLED: [],
+    };
+  } else if (workflowMode === 'FOUR_STEP') {
+    return {
+      PENDING: ['PREPARING', 'CANCELLED'],
+      ACCEPTED: ['PREPARING', 'CANCELLED'],
+      PREPARING: ['READY'],
+      READY: ['SERVED'],
+      SERVED: [],
+      CANCELLED: [],
+    };
+  } else {
+    return {
+      PENDING: ['ACCEPTED', 'CANCELLED'],
+      ACCEPTED: ['PREPARING', 'CANCELLED'],
+      PREPARING: ['READY'],
+      READY: ['SERVED'],
+      SERVED: [],
+      CANCELLED: [],
+    };
+  }
+}
 
 export interface TransitionResult {
   isValid: boolean;
@@ -21,14 +54,18 @@ export interface TransitionResult {
 export function computeOrderStatus(
   items: { itemStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' }[],
   ticketAccepted: boolean,
-  isCancelled: boolean = false
+  isCancelled: boolean = false,
+  workflowMode: 'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP' = 'FIVE_STEP'
 ): OrderStatus {
   if (isCancelled) {
     return 'CANCELLED';
   }
 
   if (!items || items.length === 0) {
-    return ticketAccepted ? 'ACCEPTED' : 'PENDING';
+    if (ticketAccepted) {
+      return workflowMode === 'FIVE_STEP' ? 'ACCEPTED' : 'PREPARING';
+    }
+    return 'PENDING';
   }
 
   const allServed = items.every((item) => item.itemStatus === 'SERVED');
@@ -40,7 +77,7 @@ export function computeOrderStatus(
     (item) => item.itemStatus === 'READY' || item.itemStatus === 'SERVED'
   );
   if (allAtLeastReady) {
-    return 'READY';
+    return workflowMode === 'THREE_STEP' ? 'SERVED' : 'READY';
   }
 
   const anyPreparingOrReady = items.some(
@@ -50,16 +87,22 @@ export function computeOrderStatus(
     return 'PREPARING';
   }
 
-  return ticketAccepted ? 'ACCEPTED' : 'PENDING';
+  if (ticketAccepted) {
+    return workflowMode === 'FIVE_STEP' ? 'ACCEPTED' : 'PREPARING';
+  }
+  return 'PENDING';
 }
 
 /**
  * Convenience helper to calculate order status from an Order document.
  */
-export function getOrderStatusRollup(order: { status: OrderStatus; items: { itemStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' }[] }): OrderStatus {
+export function getOrderStatusRollup(
+  order: { status: OrderStatus; items: { itemStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED' }[] },
+  workflowMode: 'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP' = 'FIVE_STEP'
+): OrderStatus {
   const isCancelled = order.status === 'CANCELLED';
   const ticketAccepted = order.status !== 'PENDING' && order.status !== 'CANCELLED';
-  return computeOrderStatus(order.items, ticketAccepted, isCancelled);
+  return computeOrderStatus(order.items, ticketAccepted, isCancelled, workflowMode);
 }
 
 /**
@@ -69,7 +112,8 @@ export function getOrderStatusRollup(order: { status: OrderStatus; items: { item
 export function validateStatusTransition(
   currentStatus: OrderStatus,
   nextStatus: OrderStatus,
-  userRole: 'SUPER_ADMIN' | 'MANAGER' | 'STAFF'
+  userRole: 'SUPER_ADMIN' | 'MANAGER' | 'STAFF',
+  workflowMode: 'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP' = 'FIVE_STEP'
 ): TransitionResult {
   // 1. If nextStatus is exactly currentStatus, it's valid (noop)
   if (currentStatus === nextStatus) {
@@ -77,12 +121,13 @@ export function validateStatusTransition(
   }
 
   // 2. Look up the valid next statuses from transition table
-  const allowedNext = ALLOWED_TRANSITIONS[currentStatus];
+  const transitions = getWorkflowTransitions(workflowMode);
+  const allowedNext = transitions[currentStatus];
   if (!allowedNext || !allowedNext.includes(nextStatus)) {
     return {
       isValid: false,
       errorCode: 'INVALID_STATUS_TRANSITION',
-      errorMessage: `Invalid transition from state ${currentStatus} to ${nextStatus}.`,
+      errorMessage: `Invalid transition from state ${currentStatus} to ${nextStatus} in ${workflowMode} mode.`,
     };
   }
 

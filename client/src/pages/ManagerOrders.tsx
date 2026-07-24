@@ -234,7 +234,7 @@ export const ManagerOrders: React.FC = () => {
   const isStaff = user?.role === 'STAFF';
 
   // Fetch restaurant config for workflow mode
-  const { data: restaurantResponse } = useQuery({
+  const { data: restaurantResponse, isLoading: isLoadingConfig } = useQuery({
     queryKey: ['restaurantConfig', activeRestaurantId],
     queryFn: async () => {
       const res = await apiClient.get(`/restaurants/${activeRestaurantId}`);
@@ -382,6 +382,17 @@ export const ManagerOrders: React.FC = () => {
       return nameA.localeCompare(nameB);
     });
   };
+
+  // ─── Loading state guard ──────────────────────────────────────────────────
+
+  if (activeRestaurantId && (isLoadingConfig || isLoadingActive)) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center bg-slate-100/60 p-6 text-center">
+        <Loader className="w-8 h-8 animate-spin text-slate-500 mb-3" strokeWidth={1.75} />
+        <p className="text-slate-500 text-xs font-semibold">Loading orders workflow...</p>
+      </div>
+    );
+  }
 
   // ─── No restaurant guard ──────────────────────────────────────────────────
 

@@ -630,4 +630,80 @@ describe('Phase 5 Orders & State Machine Integration Tests', () => {
     const afterSecondMigrate = await Order.findById(legacyOrder1Id);
     expect(afterSecondMigrate!.roundNumber).toBe(1);
   });
+
+  it('should support dynamic state transitions and rollup based on orderWorkflowMode (3-step and 4-step)', async () => {
+    // 1. Create a restaurant configured with 3-step workflow (New -> Preparing -> Served)
+    const restaurant = await Restaurant.create({
+      name: 'Express 3Step Cafe',
+      slug: 'express-3step',
+      orderWorkflowMode: 'THREE_STEP',
+      isActive: true,
+    });
+
+    const table = await Table.create({
+      restaurantId: restaurant.id,
+      tableNumber: '33',
+      displayName: 'Table 33',
+      token: 'secureToken21CharactersTable33',
+      isActive: true,
+      qrCodeUrl: '/api/v1/restaurants/someid/tables/someid/qr',
+    });
+
+    const category = await Category.create({ restaurantId: restaurant.id, name: 'Sweets', isActive: true });
+    const item = await MenuItem.create({
+      restaurantId: restaurant.id,
+      categoryId: category.id,
+      name: 'Cake Slice',
+      price: 400,
+      isAvailable: true,
+    });
+
+    // Setup user for auth
+    const passwordHash = await bcrypt.hash('PixoraDemo123!', 10);
+    const manager = await User.create({
+      email: 'manager_3step@pixora.dev',
+      passwordHash,
+      role: 'MANAGER',
+      name: 'Manager 3Step',
+      isActive: true,
+    });
+    await RestaurantStaff.create({ userId: manager.id, restaurantId: restaurant.id, role: 'MANAGER' });
+
+    const loginManager = await request(app).post('/api/v1/auth/login').send({ email: 'manager_3step@pixora.dev', password: 'PixoraDemo123!' });
+    const managerToken = loginManager.body.data.accessToken;
+
+    // Place an order
+    const orderRes = await request(app)
+      .post(`/api/v1/public/restaurants/${restaurant.slug}/tables/${table.token}/orders`)
+      .send({
+        items: [{ itemId: item.id, quantity: 1 }],
+      });
+    expect(orderRes.status).toBe(201);
+    const orderId = orderRes.body.data._id;
+    expect(orderRes.body.data.status).toBe('PENDING');
+
+    // A. Transition PENDING -> PREPARING directly (allowed in 3-step, but blocked in 5-step standard)
+    const validTrans = await request(app)
+      .patch(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'PREPARING' });
+
+    expect(validTrans.status).toBe(200);
+    expect(validTrans.body.data.status).toBe('PREPARING');
+
+    // B. Re-save should keep status as PREPARING, not ACCEPTED
+    const savedOrder = await Order.findById(orderId);
+    expect(savedOrder!.status).toBe('PREPARING');
+    await savedOrder!.save();
+    expect(savedOrder!.status).toBe('PREPARING');
+
+    // C. Transition PREPARING -> SERVED (directly, since READY is bypassed in 3-step)
+    const finalTrans = await request(app)
+      .patch(`/api/v1/restaurants/${restaurant.id}/orders/${orderId}/status`)
+      .set('Authorization', `Bearer ${managerToken}`)
+      .send({ status: 'SERVED' });
+
+    expect(finalTrans.status).toBe(200);
+    expect(finalTrans.body.data.status).toBe('SERVED');
+  });
 });
