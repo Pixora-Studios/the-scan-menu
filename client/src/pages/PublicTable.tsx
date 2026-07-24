@@ -632,6 +632,52 @@ export const PublicTable: React.FC = () => {
     refetchInterval: activeTab === 'cart-orders' && cartOrdersSubTab === 'orders' ? 5000 : false, // Poll session details while on orders tab
   });
 
+  // Real-time socket updates for Public Session Details
+  const { socket } = useSocket(null);
+
+  useEffect(() => {
+    if (!socket || !activeSessionId || !sessionDetailsData?.success) return;
+
+    // Join session room
+    socket.emit('join_session', { sessionId: activeSessionId });
+
+    // Join order rooms for all orders under the current session to get their item updates
+    const orders = sessionDetailsData.data.orders || [];
+    orders.forEach((order: any) => {
+      socket.emit('join_order', { orderId: order._id });
+    });
+
+    const handleSessionUpdate = (data: { sessionId: string }) => {
+      if (data.sessionId === activeSessionId) {
+        queryClient.invalidateQueries({ queryKey: ['publicSessionDetails', activeSessionId] });
+      }
+    };
+
+    const handleItemStatusUpdated = (data: { orderId: string }) => {
+      const belongsToSession = orders.some((o: any) => o._id === data.orderId);
+      if (belongsToSession) {
+        queryClient.invalidateQueries({ queryKey: ['publicSessionDetails', activeSessionId] });
+      }
+    };
+
+    const handleOrderStatusUpdated = (data: { orderId: string }) => {
+      const belongsToSession = orders.some((o: any) => o._id === data.orderId);
+      if (belongsToSession) {
+        queryClient.invalidateQueries({ queryKey: ['publicSessionDetails', activeSessionId] });
+      }
+    };
+
+    socket.on('session:updated', handleSessionUpdate);
+    socket.on('order:item_status_updated', handleItemStatusUpdated);
+    socket.on('order:status_updated', handleOrderStatusUpdated);
+
+    return () => {
+      socket.off('session:updated', handleSessionUpdate);
+      socket.off('order:item_status_updated', handleItemStatusUpdated);
+      socket.off('order:status_updated', handleOrderStatusUpdated);
+    };
+  }, [socket, activeSessionId, sessionDetailsData, queryClient]);
+
   const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
 
   const toggleRound = (roundId: string) => {

@@ -11,6 +11,7 @@ import { MenuItem } from '../src/models/MenuItem';
 import { Table } from '../src/models/Table';
 import { Order } from '../src/models/Order';
 import bcrypt from 'bcrypt';
+import { runMigration } from '../src/utils/migrateSessions';
 
 let mongoServer: MongoMemoryServer;
 
@@ -512,5 +513,121 @@ describe('Phase 5 Orders & State Machine Integration Tests', () => {
     // Orders paymentStatus should be PAID
     const orderPaid = await Order.findById(order1._id);
     expect(orderPaid!.paymentStatus).toBe('PAID');
+  });
+
+  it('should successfully and idempotently run the session migration script for legacy orders', async () => {
+    // 1. Setup Restaurant and Table
+    const restaurant = await Restaurant.create({
+      name: 'Migration Bistro',
+      slug: 'migration-bistro',
+      taxRatePercent: 10.0,
+      isActive: true,
+    });
+
+    const table = await Table.create({
+      restaurantId: restaurant.id,
+      tableNumber: '43',
+      displayName: 'Table 43',
+      token: 'secureToken21CharactersTable43',
+      isActive: true,
+      qrCodeUrl: '/api/v1/restaurants/someid/tables/someid/qr',
+    });
+
+    const category = await Category.create({ restaurantId: restaurant.id, name: 'Buns', isActive: true });
+    const item = await MenuItem.create({
+      restaurantId: restaurant.id,
+      categoryId: category.id,
+      name: 'Sourdough Bun',
+      price: 500,
+      isAvailable: true,
+    });
+
+    // 2. Insert 2 legacy orders directly into the database collection bypassing validation (lacking sessionId & roundNumber)
+    const legacyOrder1Id = new mongoose.Types.ObjectId();
+    const legacyOrder2Id = new mongoose.Types.ObjectId();
+
+    await Order.collection.insertOne({
+      _id: legacyOrder1Id,
+      restaurantId: restaurant._id,
+      tableId: table._id,
+      orderNumber: 101,
+      items: [{
+        menuItemId: item._id,
+        nameSnapshot: 'Sourdough Bun',
+        unitPriceSnapshot: 500,
+        quantity: 2,
+        selectedAddOns: [],
+      }],
+      subtotal: 1000,
+      tax: 100,
+      total: 1100,
+      status: 'SERVED',
+      source: 'QR',
+      paymentStatus: 'PENDING',
+      integrationMetadata: {},
+      createdAt: new Date(Date.now() - 3600000), // 1 hour ago
+      updatedAt: new Date(Date.now() - 3600000),
+    });
+
+    await Order.collection.insertOne({
+      _id: legacyOrder2Id,
+      restaurantId: restaurant._id,
+      tableId: table._id,
+      orderNumber: 102,
+      items: [{
+        menuItemId: item._id,
+        nameSnapshot: 'Sourdough Bun',
+        unitPriceSnapshot: 500,
+        quantity: 1,
+        selectedAddOns: [],
+      }],
+      subtotal: 500,
+      tax: 50,
+      total: 550,
+      status: 'ACCEPTED',
+      source: 'QR',
+      paymentStatus: 'PENDING',
+      integrationMetadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // Verify they are inserted and lack sessionId/roundNumber
+    const inserted1 = await Order.findById(legacyOrder1Id);
+    expect(inserted1).toBeDefined();
+    expect((inserted1 as any).sessionId).toBeUndefined();
+    expect((inserted1 as any).roundNumber).toBeUndefined();
+
+    const inserted2 = await Order.findById(legacyOrder2Id);
+    expect(inserted2).toBeDefined();
+    expect((inserted2 as any).sessionId).toBeUndefined();
+    expect((inserted2 as any).roundNumber).toBeUndefined();
+
+    // 3. Execute migration
+    await runMigration();
+
+    // 4. Verify migration results
+    const migrated1 = await Order.findById(legacyOrder1Id);
+    expect(migrated1).toBeDefined();
+    expect(migrated1!.sessionId).toBeDefined();
+    expect(migrated1!.roundNumber).toBe(1);
+    expect(migrated1!.items[0].itemStatus).toBe('SERVED');
+
+    const migrated2 = await Order.findById(legacyOrder2Id);
+    expect(migrated2).toBeDefined();
+    expect(migrated2!.sessionId).toBeDefined();
+    expect(migrated2!.roundNumber).toBe(2);
+    expect(migrated2!.items[0].itemStatus).toBe('PENDING'); // ACCEPTED order items default to PENDING
+
+    // Both orders should share the same closed table session ID
+    expect(migrated1!.sessionId.toString()).toBe(migrated2!.sessionId.toString());
+
+    // 5. Verify that running the migration a second time is idempotent (0 unmigrated orders)
+    // This will log "No migration needed" or "Found 0 unmigrated orders"
+    await runMigration();
+
+    // Re-verify that details remain unchanged
+    const afterSecondMigrate = await Order.findById(legacyOrder1Id);
+    expect(afterSecondMigrate!.roundNumber).toBe(1);
   });
 });

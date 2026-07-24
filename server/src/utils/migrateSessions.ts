@@ -73,7 +73,7 @@ export const runMigration = async () => {
 
         // Map itemStatus from order status
         for (const item of order.items) {
-          if (!item.itemStatus) {
+          if (!item.itemStatus || item.itemStatus === 'PENDING') {
             if (order.status === 'SERVED') {
               item.itemStatus = 'SERVED';
               item.servedAt = order.updatedAt;

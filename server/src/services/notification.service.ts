@@ -46,7 +46,9 @@ export class NotificationService {
 
   public notifySessionUpdated(restaurantId: string, sessionId: string, session: any): void {
     try {
-      this.getIO().to(`restaurant:${restaurantId}`).emit('session:updated', { sessionId, session });
+      const payload = { sessionId, session };
+      this.getIO().to(`restaurant:${restaurantId}`).emit('session:updated', payload);
+      this.getIO().to(`session:${sessionId}`).emit('session:updated', payload);
     } catch (err) {
       console.error('NotificationService notifySessionUpdated failed:', err);
     }

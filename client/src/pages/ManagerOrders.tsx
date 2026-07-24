@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSocket } from '../hooks/useSocket';
 import {
   Clock,
   CheckCircle2,
@@ -171,6 +172,32 @@ export const ManagerOrders: React.FC = () => {
 
     return () => clearInterval(timer);
   }, [selectedOrder]);
+
+  // Listen for real-time item status and table session updates
+  const token = localStorage.getItem('accessToken');
+  const { socket } = useSocket(token);
+
+  useEffect(() => {
+    if (!socket || !activeRestaurantId) return;
+
+    const handleItemStatusUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['activeOrdersQueue', activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['servedOrdersHistory', activeRestaurantId] });
+    };
+
+    const handleSessionUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['activeOrdersQueue', activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['servedOrdersHistory', activeRestaurantId] });
+    };
+
+    socket.on('order:item_status_updated', handleItemStatusUpdated);
+    socket.on('session:updated', handleSessionUpdated);
+
+    return () => {
+      socket.off('order:item_status_updated', handleItemStatusUpdated);
+      socket.off('session:updated', handleSessionUpdated);
+    };
+  }, [socket, activeRestaurantId, queryClient]);
 
   // Mutations
   const updateStatusMutation = useMutation({
