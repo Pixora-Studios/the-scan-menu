@@ -5,7 +5,6 @@ import { Category } from '../models/Category';
 import { MenuItem } from '../models/MenuItem';
 import { Order, OrderCounter } from '../models/Order';
 import { TableSession } from '../models/TableSession';
-import { getOrderStatusRollup } from '../utils/orderStateMachine';
 import { IntegrationSyncLog } from '../models/IntegrationSyncLog';
 import { IntegrationFactory } from '../integrations/core/IntegrationFactory';
 import { sendSuccess, sendError } from '../utils/response';

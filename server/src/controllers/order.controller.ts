@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { Order, OrderStatus } from '../models/Order';
 import { TableSession } from '../models/TableSession';
-import { validateStatusTransition, getOrderStatusRollup } from '../utils/orderStateMachine';
+import { validateStatusTransition } from '../utils/orderStateMachine';
 import { sendSuccess, sendError } from '../utils/response';
 import { NotificationService } from '../services/notification.service';
 import mongoose from 'mongoose';
