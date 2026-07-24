@@ -183,6 +183,25 @@ export class RestaurantController {
       delete updateData.isActive;
       delete updateData.integrationConfig;
 
+      // Validate orderWorkflowMode if provided
+      if (updateData.orderWorkflowMode && !['FIVE_STEP', 'FOUR_STEP', 'THREE_STEP'].includes(updateData.orderWorkflowMode)) {
+        sendError(res, 'BAD_REQUEST', 'Invalid orderWorkflowMode. Must be FIVE_STEP, FOUR_STEP, or THREE_STEP', null, 400);
+        return;
+      }
+
+      // Validate autoAcceptConfig if provided
+      if (updateData.autoAcceptConfig !== undefined) {
+        const { enabled, delaySeconds } = updateData.autoAcceptConfig || {};
+        if (typeof enabled !== 'boolean') {
+          sendError(res, 'BAD_REQUEST', 'autoAcceptConfig.enabled must be a boolean', null, 400);
+          return;
+        }
+        if (delaySeconds !== undefined && (typeof delaySeconds !== 'number' || delaySeconds < 1 || delaySeconds > 300)) {
+          sendError(res, 'BAD_REQUEST', 'autoAcceptConfig.delaySeconds must be a number between 1 and 300', null, 400);
+          return;
+        }
+      }
+
       const restaurant = await Restaurant.findByIdAndUpdate(restaurantId, updateData, { new: true });
       if (!restaurant) {
         sendError(res, 'RESTAURANT_NOT_FOUND', 'Restaurant not found', null, 404);

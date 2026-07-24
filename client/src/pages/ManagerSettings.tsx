@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
-import { Loader, Settings, Save, AlertCircle, Palette } from 'lucide-react';
+import { Loader, Settings, Save, AlertCircle, Palette, GitBranch, Timer } from 'lucide-react';
 import apiClient from '../lib/api';
 
 interface RestaurantTheme {
@@ -79,6 +79,11 @@ export const ManagerSettings: React.FC = () => {
   const [accentColor, setAccentColor] = useState('#F59E0B');
   const [fontFamily, setFontFamily] = useState('Plus Jakarta Sans');
 
+  // Order Workflow & Automation
+  const [orderWorkflowMode, setOrderWorkflowMode] = useState<'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP'>('FIVE_STEP');
+  const [autoAcceptEnabled, setAutoAcceptEnabled] = useState(false);
+  const [autoAcceptDelay, setAutoAcceptDelay] = useState(10);
+
   // Fetch restaurant details
   const { data: restaurantResponse, isLoading } = useQuery({
     queryKey: ['restaurantProfileInfo', activeRestaurantId],
@@ -131,6 +136,11 @@ export const ManagerSettings: React.FC = () => {
         setAccentColor(p.theme.accentColor || '#F59E0B');
         setFontFamily(p.theme.fontFamily || 'Plus Jakarta Sans');
       }
+
+      const raw = restaurantResponse.data as any;
+      setOrderWorkflowMode(raw.orderWorkflowMode || 'FIVE_STEP');
+      setAutoAcceptEnabled(!!(raw.autoAcceptConfig?.enabled));
+      setAutoAcceptDelay(raw.autoAcceptConfig?.delaySeconds ?? 10);
     }
   }, [restaurantResponse]);
 
@@ -190,7 +200,12 @@ export const ManagerSettings: React.FC = () => {
         accentColor,
         fontFamily,
       },
-    };
+      orderWorkflowMode,
+      autoAcceptConfig: {
+        enabled: autoAcceptEnabled,
+        delaySeconds: autoAcceptDelay,
+      },
+    } as any;
 
     updateMutation.mutate(payload);
   };
@@ -213,7 +228,7 @@ export const ManagerSettings: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 pb-24 h-full overflow-y-auto font-sans">
+    <div className="max-w-4xl mx-auto p-4 md:p-6 pb-24 font-sans">
       <div className="mb-8">
         <h3 className="font-display text-3xl font-semibold text-slate-900 flex items-center gap-2">
           <Settings className="w-8 h-8 text-amber-500" strokeWidth={1.75} />
@@ -537,6 +552,127 @@ export const ManagerSettings: React.FC = () => {
               <option value="JetBrains Mono">JetBrains Mono (Technical Monospace)</option>
               <option value="DM Mono">DM Mono (Clean Monospace)</option>
             </select>
+          </div>
+        </div>
+
+        {/* Order Workflow & Automation Card */}
+        <div className="bg-white rounded-3xl border border-slate-150 p-6 shadow-sm space-y-6">
+          <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 flex items-center gap-1.5">
+            <GitBranch className="w-4 h-4 text-amber-500" strokeWidth={1.75} />
+            <span>Order Workflow Mode</span>
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {([
+              {
+                value: 'FIVE_STEP',
+                label: '5-Step Standard',
+                desc: 'New → Accepted → Preparing → Ready → Served',
+                steps: ['New', 'Accepted', 'Preparing', 'Ready', 'Served'],
+                colors: ['bg-amber-500', 'bg-emerald-500', 'bg-indigo-500', 'bg-purple-500', 'bg-blue-500'],
+              },
+              {
+                value: 'FOUR_STEP',
+                label: '4-Step Kitchen & Ready',
+                desc: 'New → Preparing → Ready → Served',
+                steps: ['New', 'Preparing', 'Ready', 'Served'],
+                colors: ['bg-amber-500', 'bg-indigo-500', 'bg-purple-500', 'bg-blue-500'],
+              },
+              {
+                value: 'THREE_STEP',
+                label: '3-Step Express',
+                desc: 'New → Preparing → Served',
+                steps: ['New', 'Preparing', 'Served'],
+                colors: ['bg-amber-500', 'bg-indigo-500', 'bg-blue-500'],
+              },
+            ] as const).map((mode) => {
+              const isSelected = orderWorkflowMode === mode.value;
+              return (
+                <button
+                  key={mode.value}
+                  type="button"
+                  onClick={() => setOrderWorkflowMode(mode.value)}
+                  className={`p-4 rounded-2xl border-2 text-left transition-all duration-200 space-y-3 ${
+                    isSelected
+                      ? 'border-amber-500 bg-amber-50/50 shadow-md'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <p className={`text-sm font-extrabold ${ isSelected ? 'text-amber-700' : 'text-slate-800'}`}>{mode.label}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5 leading-relaxed">{mode.desc}</p>
+                    </div>
+                    {isSelected && (
+                      <span className="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center shrink-0 mt-0.5">
+                        <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-white fill-current"><path d="M1.5 6.5l3 3L10.5 3" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {mode.steps.map((step, i) => (
+                      <div key={step} className="flex items-center gap-1.5">
+                        <div className={`h-1.5 w-6 rounded-full ${mode.colors[i]}`} />
+                        <span className="text-[9px] font-bold text-slate-500">{step}</span>
+                        {i < mode.steps.length - 1 && <span className="text-[9px] text-slate-300">›</span>}
+                      </div>
+                    ))}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Auto-Accept Automation */}
+          <div className="pt-4 border-t border-slate-100 space-y-4">
+            <h4 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+              <Timer className="w-4 h-4 text-amber-500" strokeWidth={1.75} />
+              <span>Auto-Accept Orders</span>
+            </h4>
+
+            <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50 transition">
+              <div className="mt-0.5">
+                <input
+                  type="checkbox"
+                  checked={autoAcceptEnabled}
+                  onChange={(e) => setAutoAcceptEnabled(e.target.checked)}
+                  className="h-4 w-4 rounded text-amber-500 accent-amber-500 border-slate-300"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-bold text-slate-800">Automatically accept new orders</p>
+                <p className="text-xs text-slate-500 leading-relaxed mt-0.5">
+                  New orders will be auto-accepted and moved to{' '}
+                  <strong>{orderWorkflowMode === 'FIVE_STEP' ? 'Accepted' : 'Preparing'}</strong>{' '}
+                  after the specified delay. Great for busy restaurants.
+                </p>
+              </div>
+            </label>
+
+            {autoAcceptEnabled && (
+              <div className="ml-1 space-y-3">
+                <label className="block text-xs font-semibold text-slate-600">Auto-accept delay</label>
+                <div className="flex flex-wrap gap-2">
+                  {[5, 10, 15, 30, 60, 120].map((sec) => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setAutoAcceptDelay(sec)}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold border transition ${
+                        autoAcceptDelay === sec
+                          ? 'bg-amber-500 border-amber-500 text-white shadow-sm'
+                          : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300'
+                      }`}
+                    >
+                      {sec < 60 ? `${sec}s` : `${sec / 60}m`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Orders will auto-advance after <strong className="text-slate-600">{autoAcceptDelay < 60 ? `${autoAcceptDelay} seconds` : `${autoAcceptDelay / 60} minute(s)`}</strong>.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

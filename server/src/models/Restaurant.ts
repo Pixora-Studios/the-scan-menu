@@ -56,6 +56,11 @@ export interface IRestaurant extends Document {
     planType: 'STARTER' | 'PREMIUM' | 'ENTERPRISE';
     expiresAt: Date;
   };
+  orderWorkflowMode?: 'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP';
+  autoAcceptConfig?: {
+    enabled: boolean;
+    delaySeconds: number;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -112,6 +117,15 @@ const restaurantSchema = new Schema<IRestaurant>(
       status: { type: String, enum: ['ACTIVE', 'EXPIRED', 'TRIAL'], default: 'TRIAL' },
       planType: { type: String, enum: ['STARTER', 'PREMIUM', 'ENTERPRISE'], default: 'STARTER' },
       expiresAt: { type: Date, default: () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) }, // 14-day default trial
+    },
+    orderWorkflowMode: {
+      type: String,
+      enum: ['FIVE_STEP', 'FOUR_STEP', 'THREE_STEP'],
+      default: 'FIVE_STEP',
+    },
+    autoAcceptConfig: {
+      enabled: { type: Boolean, default: false },
+      delaySeconds: { type: Number, default: 10 },
     },
   },
   {

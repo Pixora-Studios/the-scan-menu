@@ -64,6 +64,8 @@ export class PublicController {
           currency: restaurant.currency,
           timezone: restaurant.timezone,
           taxRatePercent: restaurant.taxRatePercent,
+          orderWorkflowMode: restaurant.orderWorkflowMode || 'FIVE_STEP',
+          autoAcceptConfig: restaurant.autoAcceptConfig || { enabled: false, delaySeconds: 10 },
         },
         table: {
           id: table.id,
@@ -416,6 +418,35 @@ export class PublicController {
       }
 
       sendSuccess(res, order, isMerge ? 'Order merged into pending round' : 'Order placed successfully', isMerge ? 200 : 201);
+
+      // Auto-accept timer: if restaurant has autoAcceptConfig.enabled, schedule auto-transition
+      if (!isMerge && restaurant.autoAcceptConfig?.enabled) {
+        const delayMs = (restaurant.autoAcceptConfig.delaySeconds || 10) * 1000;
+        const orderId = order._id.toString();
+        const restaurantIdStr = restaurant._id.toString();
+        const workflowMode = restaurant.orderWorkflowMode || 'FIVE_STEP';
+
+        setTimeout(async () => {
+          try {
+            const freshOrder = await Order.findById(orderId);
+            if (!freshOrder || freshOrder.status !== 'PENDING') return;
+
+            // For 5-step: PENDING -> ACCEPTED; for 3/4-step: PENDING -> PREPARING
+            const nextStatus = workflowMode === 'FIVE_STEP' ? 'ACCEPTED' : 'PREPARING';
+            freshOrder.status = nextStatus as any;
+            await freshOrder.save();
+
+            NotificationService.getInstance().notifyOrderStatusUpdated(
+              restaurantIdStr,
+              orderId,
+              nextStatus,
+              freshOrder.updatedAt
+            );
+          } catch (err) {
+            console.error('[AutoAccept] Failed to auto-accept order:', err);
+          }
+        }, delayMs);
+      }
     } catch (error) {
       next(error);
     }

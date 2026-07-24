@@ -107,17 +107,40 @@ const MenuSkeleton = () => (
 
 // ==========================================
 // TIMELINE COMPONENT (WITH ANIMATED CONNECTING LINES)
+// Dynamic based on restaurant's orderWorkflowMode
 // ==========================================
-const TIMELINE_STEPS = ['PENDING', 'ACCEPTED', 'PREPARING', 'READY', 'SERVED'];
-const TIMELINE_LABELS = ['Placed', 'Accepted', 'Preparing', 'Ready', 'Served'];
-const TIMELINE_ICONS = [Clock, CheckCircle2, ChefHat, Utensils, CheckCircle2];
+
+type WorkflowMode = 'FIVE_STEP' | 'FOUR_STEP' | 'THREE_STEP';
+
+const WORKFLOW_TIMELINE_MAP: Record<WorkflowMode, { status: string; label: string; icon: typeof Clock }[]> = {
+  FIVE_STEP: [
+    { status: 'PENDING',   label: 'Placed',    icon: Clock },
+    { status: 'ACCEPTED',  label: 'Accepted',  icon: CheckCircle2 },
+    { status: 'PREPARING', label: 'Preparing', icon: ChefHat },
+    { status: 'READY',     label: 'Ready',     icon: Utensils },
+    { status: 'SERVED',    label: 'Served',    icon: CheckCircle2 },
+  ],
+  FOUR_STEP: [
+    { status: 'PENDING',   label: 'Placed',    icon: Clock },
+    { status: 'PREPARING', label: 'Preparing', icon: ChefHat },
+    { status: 'READY',     label: 'Ready',     icon: Utensils },
+    { status: 'SERVED',    label: 'Served',    icon: CheckCircle2 },
+  ],
+  THREE_STEP: [
+    { status: 'PENDING',   label: 'Placed',    icon: Clock },
+    { status: 'PREPARING', label: 'Preparing', icon: ChefHat },
+    { status: 'SERVED',    label: 'Served',    icon: CheckCircle2 },
+  ],
+};
 
 interface TimelineProps {
   currentStatus: string;
+  workflowMode?: WorkflowMode;
 }
 
-const Timeline: React.FC<TimelineProps> = ({ currentStatus }) => {
-  const currentIndex = TIMELINE_STEPS.indexOf(currentStatus);
+const Timeline: React.FC<TimelineProps> = ({ currentStatus, workflowMode = 'FIVE_STEP' }) => {
+  const steps = WORKFLOW_TIMELINE_MAP[workflowMode] || WORKFLOW_TIMELINE_MAP['FIVE_STEP'];
+  const currentIndex = steps.findIndex((s) => s.status === currentStatus);
 
   if (currentStatus === 'CANCELLED') return null;
 
@@ -135,18 +158,18 @@ const Timeline: React.FC<TimelineProps> = ({ currentStatus }) => {
           className="absolute left-6 top-[15px] h-1 bg-emerald-500 -z-10 rounded origin-left"
           initial={{ width: '0%' }}
           animate={{
-            width: currentIndex > 0 ? `${(currentIndex / (TIMELINE_STEPS.length - 1)) * 90}%` : '0%',
+            width: currentIndex > 0 ? `${(currentIndex / (steps.length - 1)) * 90}%` : '0%',
           }}
           transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
         />
 
-        {TIMELINE_STEPS.map((step, idx) => {
-          const StepIcon = TIMELINE_ICONS[idx];
+        {steps.map((step, idx) => {
+          const StepIcon = step.icon;
           const isCompleted = idx <= currentIndex;
           const isCurrent = idx === currentIndex;
 
           return (
-            <div key={step} className="flex flex-col items-center space-y-2 relative">
+            <div key={step.status} className="flex flex-col items-center space-y-2 relative">
               {/* Timeline Node dot */}
               <motion.div
                 layout
@@ -169,7 +192,7 @@ const Timeline: React.FC<TimelineProps> = ({ currentStatus }) => {
                   isCurrent ? 'text-emerald-600 font-extrabold' : isCompleted ? 'text-slate-800' : 'text-slate-400'
                 }`}
               >
-                {TIMELINE_LABELS[idx]}
+                {step.label}
               </span>
             </div>
           );
@@ -187,6 +210,7 @@ interface OrderTrackerProps {
   currency: string;
   taxRatePercent: number;
   onBack: () => void;
+  workflowMode?: WorkflowMode;
 }
 
 const OrderTracker: React.FC<OrderTrackerProps> = ({
@@ -194,6 +218,7 @@ const OrderTracker: React.FC<OrderTrackerProps> = ({
   currency,
   taxRatePercent,
   onBack,
+  workflowMode = 'FIVE_STEP',
 }) => {
   const { socket, status: connectionStatus } = useSocket(null);
   const [liveStatus, setLiveStatus] = useState<string | null>(null);
@@ -393,9 +418,9 @@ const OrderTracker: React.FC<OrderTrackerProps> = ({
         )}
       </AnimatePresence>
 
-      {/* Live timeline */}
+      {/* Live timeline — dynamically matches restaurant workflow */}
       {currentStatus !== 'CANCELLED' && animationCompleted && (
-        <Timeline currentStatus={currentStatus} />
+        <Timeline currentStatus={currentStatus} workflowMode={workflowMode} />
       )}
 
       {/* Receipt summary */}
@@ -1855,6 +1880,7 @@ export const PublicTable: React.FC = () => {
                   currency={currency}
                   taxRatePercent={restaurant.taxRatePercent || 0}
                   onBack={() => setActiveTrackingOrderId(null)}
+                  workflowMode={(restaurant as any).orderWorkflowMode || 'FIVE_STEP'}
                 />
               ) : !activeSessionId ? (
                 <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-4">

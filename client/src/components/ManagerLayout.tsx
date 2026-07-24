@@ -247,7 +247,7 @@ export const ManagerLayout: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen max-h-screen flex flex-col md:flex-row bg-[#FAF9F6] text-slate-900 overflow-hidden font-sans select-none">
+    <div className="min-h-screen max-h-screen flex flex-col md:flex-row bg-[#FAF9F6] text-slate-900 font-sans select-none">
 
       {/* ----------------- SIDEBAR (TABLET/DESKTOP) ----------------- */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-150 shrink-0 h-full">
@@ -400,7 +400,7 @@ export const ManagerLayout: React.FC = () => {
         {renderHeader()}
 
         {/* Active Content Panel */}
-        <main className="flex-1 overflow-hidden relative">
+        <main className="flex-1 h-0 overflow-y-auto relative">
           <Outlet />
         </main>
       </div>

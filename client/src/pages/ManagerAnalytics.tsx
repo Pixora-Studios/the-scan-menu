@@ -360,7 +360,7 @@ export const ManagerAnalytics: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-6 pb-24 space-y-6 h-full overflow-y-auto font-sans">
+    <div className="max-w-6xl mx-auto p-4 md:p-6 pb-24 space-y-6 font-sans">
 
       {/* 1. Header Toolbar */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-150 pb-5 shrink-0">
