@@ -1,6 +1,7 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import { getOrderStatusRollup } from '../utils/orderStateMachine';
 import { TableSession } from './TableSession';
+import { Restaurant } from './Restaurant';
 
 // ==========================================
 // ORDER COUNTER MODEL (for atomic order numbering)
@@ -174,9 +175,37 @@ orderSchema.pre('validate', async function (this: any, next) {
 });
 
 // Pre-save hook to automatically compute and update aggregate status
-orderSchema.pre('save', function (this: any, next) {
+orderSchema.pre('save', async function (this: any, next) {
   try {
-    this.status = getOrderStatusRollup(this);
+    const restaurant = await Restaurant.findById(this.restaurantId).select('orderWorkflowMode');
+    const workflowMode = restaurant?.orderWorkflowMode || 'FIVE_STEP';
+
+    // Advanced Logic: If aggregate status was manually moved, sync item-level statuses
+    if (this.isModified('status')) {
+      const targetStatus: string = this.status;
+      if (targetStatus === 'SERVED') {
+        for (const item of this.items) {
+          item.itemStatus = 'SERVED';
+          if (!item.servedAt) {
+            item.servedAt = new Date();
+          }
+        }
+      } else if (targetStatus === 'READY') {
+        for (const item of this.items) {
+          if (item.itemStatus === 'PENDING' || item.itemStatus === 'PREPARING') {
+            item.itemStatus = 'READY';
+          }
+        }
+      } else if (targetStatus === 'PREPARING') {
+        for (const item of this.items) {
+          if (item.itemStatus === 'PENDING') {
+            item.itemStatus = 'PREPARING';
+          }
+        }
+      }
+    }
+
+    this.status = getOrderStatusRollup(this, workflowMode);
   } catch (err) {
     console.error('Error in order pre-save hook:', err);
   }

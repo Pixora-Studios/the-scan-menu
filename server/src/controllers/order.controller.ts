@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { Order, OrderStatus } from '../models/Order';
 import { TableSession } from '../models/TableSession';
+import { Restaurant } from '../models/Restaurant';
 import { validateStatusTransition } from '../utils/orderStateMachine';
 import { sendSuccess, sendError } from '../utils/response';
 import { NotificationService } from '../services/notification.service';
@@ -277,8 +278,17 @@ export class OrderController {
         return;
       }
 
+      // Fetch restaurant's orderWorkflowMode
+      const restaurant = await Restaurant.findById(restaurantId).select('orderWorkflowMode');
+      const workflowMode = restaurant?.orderWorkflowMode || 'FIVE_STEP';
+
       // Check transition validity using central state machine logic
-      const validation = validateStatusTransition(order.status, nextStatus as OrderStatus, user.role as 'SUPER_ADMIN' | 'MANAGER' | 'STAFF');
+      const validation = validateStatusTransition(
+        order.status,
+        nextStatus as OrderStatus,
+        user.role as 'SUPER_ADMIN' | 'MANAGER' | 'STAFF',
+        workflowMode
+      );
 
       if (!validation.isValid) {
         if (validation.errorCode === 'FORBIDDEN') {
@@ -336,8 +346,12 @@ export class OrderController {
         return;
       }
 
+      // Fetch restaurant's orderWorkflowMode
+      const restaurant = await Restaurant.findById(restaurantId).select('orderWorkflowMode');
+      const workflowMode = restaurant?.orderWorkflowMode || 'FIVE_STEP';
+
       // Run status transition validator to check if cancelling from current state is allowed
-      const validation = validateStatusTransition(order.status, 'CANCELLED', user.role);
+      const validation = validateStatusTransition(order.status, 'CANCELLED', user.role, workflowMode);
 
       if (!validation.isValid) {
         sendError(res, 'INVALID_STATUS_TRANSITION', validation.errorMessage || 'Invalid transition.', null, 400);
