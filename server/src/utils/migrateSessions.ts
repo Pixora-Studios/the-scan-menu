@@ -15,8 +15,15 @@ export const runMigration = async () => {
       await mongoose.connect(mongoURI);
     }
 
-    // Find all orders that do not have a sessionId
-    const unmigratedOrders = await Order.find({ sessionId: { $exists: false } });
+    // Find all orders that do not have a sessionId or roundNumber
+    const unmigratedOrders = await Order.find({
+      $or: [
+        { sessionId: { $exists: false } },
+        { sessionId: null },
+        { roundNumber: { $exists: false } },
+        { roundNumber: null },
+      ],
+    });
     logger.info(`Found ${unmigratedOrders.length} unmigrated orders.`);
 
     if (unmigratedOrders.length === 0) {

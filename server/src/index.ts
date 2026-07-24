@@ -53,6 +53,7 @@ import { errorHandler } from './middleware/errorHandler';
 import { SocketService } from './sockets/socket.service';
 import { logger } from './utils/logger';
 import { Order } from './models/Order';
+import { runMigration } from './utils/migrateSessions';
 
 const app = express();
 const httpServer = createServer(app);
@@ -109,14 +110,23 @@ export const startServer = async () => {
     await mongoose.connect(mongoURI);
     logger.info('Successfully connected to MongoDB.');
 
-    // Startup safety check for unmigrated orders
+    // Startup safety check and auto-migration for unmigrated orders
     try {
-      const unmigratedCount = await Order.countDocuments({ sessionId: { $exists: false } });
+      const unmigratedCount = await Order.countDocuments({
+        $or: [
+          { sessionId: { $exists: false } },
+          { sessionId: null },
+          { roundNumber: { $exists: false } },
+          { roundNumber: null },
+        ],
+      });
       if (unmigratedCount > 0) {
-        logger.warn(`[Startup Safety Check] Found ${unmigratedCount} unmigrated orders lacking sessionId/roundNumber. Please run "npm run migrate:sessions" to migrate legacy orders.`);
+        logger.warn(`[Startup Safety Check] Found ${unmigratedCount} unmigrated orders lacking sessionId/roundNumber. Executing automatic session migration...`);
+        await runMigration();
+        logger.info('[Startup Safety Check] Automatic session migration completed successfully.');
       }
     } catch (checkErr) {
-      logger.error(checkErr, 'Error running startup safety check for unmigrated orders');
+      logger.error(checkErr, 'Error running startup safety check / auto-migration for unmigrated orders');
     }
 
     httpServer.listen(PORT, () => {

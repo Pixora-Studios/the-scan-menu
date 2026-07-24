@@ -1,5 +1,6 @@
 import { Schema, model, Document, Types } from 'mongoose';
 import { getOrderStatusRollup } from '../utils/orderStateMachine';
+import { TableSession } from './TableSession';
 
 // ==========================================
 // ORDER COUNTER MODEL (for atomic order numbering)
@@ -136,6 +137,41 @@ const orderSchema = new Schema<IOrder>(
     collection: 'orders',
   }
 );
+
+// Pre-validate hook to auto-heal missing sessionId and roundNumber for legacy or unmigrated orders
+orderSchema.pre('validate', async function (this: any, next) {
+  try {
+    if ((!this.sessionId || !this.roundNumber) && this.restaurantId && this.tableId) {
+      let session = await TableSession.findOne({
+        restaurantId: this.restaurantId,
+        tableId: this.tableId,
+        status: 'OPEN',
+      });
+      if (!session) {
+        session = new TableSession({
+          restaurantId: this.restaurantId,
+          tableId: this.tableId,
+          status: 'OPEN',
+          roundCount: 1,
+          subtotal: this.subtotal || 0,
+          tax: this.tax || 0,
+          total: this.total || 0,
+          openedAt: this.createdAt || new Date(),
+        });
+        await session.save();
+      }
+      if (!this.sessionId) {
+        this.sessionId = session._id;
+      }
+      if (!this.roundNumber) {
+        this.roundNumber = session.roundCount || 1;
+      }
+    }
+  } catch (err) {
+    console.error('Error in order pre-validate hook for sessionId auto-heal:', err);
+  }
+  next();
+});
 
 // Pre-save hook to automatically compute and update aggregate status
 orderSchema.pre('save', function (this: any, next) {
