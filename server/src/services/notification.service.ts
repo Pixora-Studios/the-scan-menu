@@ -34,6 +34,26 @@ export class NotificationService {
     }
   }
 
+  public notifyItemStatusUpdated(restaurantId: string, orderId: string, itemIndex: number, itemStatus: string, updatedAt: Date): void {
+    try {
+      const payload = { orderId, itemIndex, itemStatus, updatedAt };
+      this.getIO().to(`order:${orderId}`).emit('order:item_status_updated', payload);
+      this.getIO().to(`restaurant:${restaurantId}`).emit('order:item_status_updated', payload);
+    } catch (err) {
+      console.error('NotificationService notifyItemStatusUpdated failed:', err);
+    }
+  }
+
+  public notifySessionUpdated(restaurantId: string, sessionId: string, session: any): void {
+    try {
+      const payload = { sessionId, session };
+      this.getIO().to(`restaurant:${restaurantId}`).emit('session:updated', payload);
+      this.getIO().to(`session:${sessionId}`).emit('session:updated', payload);
+    } catch (err) {
+      console.error('NotificationService notifySessionUpdated failed:', err);
+    }
+  }
+
   public notifyWaiterCallCreated(restaurantId: string, waiterCall: any): void {
     try {
       this.getIO().to(`restaurant:${restaurantId}`).emit('waiter_call:created', waiterCall);

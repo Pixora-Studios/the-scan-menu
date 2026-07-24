@@ -57,6 +57,32 @@ export class SocketService {
         }
       });
 
+      // Public Join Session Room (Hardened: verifies sessionId exists in DB to prevent arbitrary room snooping)
+      socket.on('join_session', async (data) => {
+        const { sessionId } = data;
+        if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) {
+          socket.emit('error', { code: 'INVALID_SESSION_ID', message: 'Invalid or missing sessionId' });
+          return;
+        }
+
+        try {
+          if (process.env.NODE_ENV !== 'test') {
+            const { TableSession } = await import('../models/TableSession');
+            const sessionExists = await TableSession.exists({ _id: new mongoose.Types.ObjectId(sessionId) });
+            if (!sessionExists) {
+              socket.emit('error', { code: 'SESSION_NOT_FOUND', message: 'The specified table session does not exist' });
+              return;
+            }
+          }
+
+          socket.join(`session:${sessionId}`);
+          logger.info(`Socket ${socket.id} joined session:${sessionId}`);
+          socket.emit('joined_session', { sessionId });
+        } catch (err) {
+          socket.emit('error', { code: 'INTERNAL_SERVER_ERROR', message: 'An unhandled socket error occurred' });
+        }
+      });
+
       // Authenticated Join Restaurant Room
       socket.on('join_restaurant', async (data) => {
         const { restaurantId } = data;

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
 import { useToast } from '../hooks/useToast';
+import { useSocket } from '../hooks/useSocket';
 import {
   Clock,
   CheckCircle2,
@@ -24,12 +25,17 @@ interface OrderItem {
   quantity: number;
   selectedAddOns: { name: string; priceDelta: number }[];
   specialInstructions?: string;
+  prepTimeMinutesSnapshot?: number;
+  itemStatus?: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED';
 }
 
 interface Order {
   _id: string;
   restaurantId: string;
   tableId: { displayName: string; tableNumber: string } | any;
+  sessionId?: string;
+  roundNumber?: number;
+  isMerged?: boolean;
   orderNumber: number;
   items: OrderItem[];
   subtotal: number;
@@ -92,6 +98,39 @@ export const ManagerOrders: React.FC = () => {
 
   const activeOrders = activeOrdersResponse?.success ? activeOrdersResponse.data : [];
 
+  const updateItemStatusMutation = useMutation({
+    mutationFn: async ({ orderId, itemIndex, nextItemStatus }: { orderId: string; itemIndex: number; nextItemStatus: string }) => {
+      const res = await apiClient.patch(
+        `/restaurants/${activeRestaurantId}/orders/${orderId}/items/${itemIndex}/status`,
+        { itemStatus: nextItemStatus }
+      );
+      return res.data;
+    },
+    onSuccess: (data) => {
+      toast('Item status updated', 'success');
+      queryClient.invalidateQueries({ queryKey: ['activeOrdersQueue', activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['servedOrdersHistory', activeRestaurantId] });
+      setSelectedOrder((prev) => {
+        if (prev && prev._id === data.data._id) {
+          return data.data;
+        }
+        return prev;
+      });
+    },
+    onError: (err: any) => {
+      toast(err.response?.data?.error?.message || 'Failed to update item status', 'error');
+    },
+  });
+
+  const getNextItemStatus = (currentStatus?: string) => {
+    switch (currentStatus) {
+      case 'PENDING': return 'PREPARING';
+      case 'PREPARING': return 'READY';
+      case 'READY': return 'SERVED';
+      default: return null;
+    }
+  };
+
   // 2. Fetch Served Orders (for SERVED column / tab, with page limits and scoping)
   const { data: servedOrdersData, isFetching: isFetchingServed } = useQuery({
     queryKey: ['servedOrdersHistory', activeRestaurantId, servedPage],
@@ -133,6 +172,32 @@ export const ManagerOrders: React.FC = () => {
 
     return () => clearInterval(timer);
   }, [selectedOrder]);
+
+  // Listen for real-time item status and table session updates
+  const token = localStorage.getItem('accessToken');
+  const { socket } = useSocket(token);
+
+  useEffect(() => {
+    if (!socket || !activeRestaurantId) return;
+
+    const handleItemStatusUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['activeOrdersQueue', activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['servedOrdersHistory', activeRestaurantId] });
+    };
+
+    const handleSessionUpdated = () => {
+      queryClient.invalidateQueries({ queryKey: ['activeOrdersQueue', activeRestaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['servedOrdersHistory', activeRestaurantId] });
+    };
+
+    socket.on('order:item_status_updated', handleItemStatusUpdated);
+    socket.on('session:updated', handleSessionUpdated);
+
+    return () => {
+      socket.off('order:item_status_updated', handleItemStatusUpdated);
+      socket.off('session:updated', handleSessionUpdated);
+    };
+  }, [socket, activeRestaurantId, queryClient]);
 
   // Mutations
   const updateStatusMutation = useMutation({
@@ -227,12 +292,19 @@ export const ManagerOrders: React.FC = () => {
     return servedOrders.filter((o) => new Date(o.createdAt).toDateString() === todayStr);
   };
 
-  // Get orders by status
+  // Get orders by status, grouped/sorted visually by table name to cluster them
   const getOrdersByStatus = (st: string) => {
+    let list = [];
     if (st === 'SERVED') {
-      return getTodayServedOrders();
+      list = getTodayServedOrders();
+    } else {
+      list = activeOrders.filter((o: Order) => o.status === st);
     }
-    return activeOrders.filter((o: Order) => o.status === st);
+    return [...list].sort((a, b) => {
+      const nameA = (a.tableId?.displayName || a.tableId?.tableNumber || '').toString();
+      const nameB = (b.tableId?.displayName || b.tableId?.tableNumber || '').toString();
+      return nameA.localeCompare(nameB);
+    });
   };
 
   if (!activeRestaurantId) {
@@ -421,9 +493,52 @@ export const ManagerOrders: React.FC = () => {
                               📍 Table {order.tableId?.displayName || order.tableId?.tableNumber || order.tableId}
                             </h4>
 
-                            <p className="text-[10px] text-slate-500 line-clamp-2 mt-1 font-sans">
-                              {order.items.map((item) => `${item.nameSnapshot} (x${item.quantity})`).join(', ')}
-                            </p>
+                            {(() => {
+                              const itemsWithOriginalIndex = order.items.map((item, idx) => ({ ...item, originalIndex: idx }));
+                              const sortedItems = [...itemsWithOriginalIndex].sort((a, b) => (a.prepTimeMinutesSnapshot || 10) - (b.prepTimeMinutesSnapshot || 10));
+                              return (
+                                <div className="mt-2.5 space-y-2" onClick={(e) => e.stopPropagation()}>
+                                  {sortedItems.map((item) => {
+                                    const nextStatus = getNextItemStatus(item.itemStatus);
+                                    const isServed = item.itemStatus === 'SERVED';
+                                    return (
+                                      <div key={item.originalIndex} className="flex items-center justify-between gap-1 text-[11px]">
+                                        <label className="flex items-center gap-1.5 cursor-pointer min-w-0 flex-1">
+                                          <input
+                                            type="checkbox"
+                                            checked={isServed}
+                                            disabled={isServed || updateItemStatusMutation.isPending}
+                                            onChange={() => {
+                                              if (nextStatus) {
+                                                updateItemStatusMutation.mutate({
+                                                  orderId: order._id,
+                                                  itemIndex: item.originalIndex,
+                                                  nextItemStatus: nextStatus,
+                                                });
+                                              }
+                                            }}
+                                            className="w-3.5 h-3.5 rounded border-slate-300 accent-amber-500 cursor-pointer shrink-0"
+                                          />
+                                          <span className={`truncate text-xs font-semibold leading-none ${isServed ? 'line-through text-slate-400' : 'text-slate-700'}`}>
+                                            {item.nameSnapshot} <strong className="text-slate-400 font-mono text-[10px]">x{item.quantity}</strong>
+                                          </span>
+                                        </label>
+                                        <div className="flex items-center gap-1 shrink-0">
+                                          {item.prepTimeMinutesSnapshot && item.prepTimeMinutesSnapshot <= 10 && (
+                                            <span className="text-[8px] bg-amber-50 border border-amber-100 text-amber-700 px-1 py-0.2 rounded font-extrabold font-sans tracking-wide uppercase shrink-0">
+                                              Quick
+                                            </span>
+                                          )}
+                                          <span className="text-[9px] text-slate-400 font-bold font-mono shrink-0">
+                                            {item.itemStatus || 'PENDING'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div className="border-t border-slate-100 pt-2.5 flex items-center justify-between text-[11px] font-semibold text-slate-700 font-mono mt-auto shrink-0">
@@ -527,32 +642,69 @@ export const ManagerOrders: React.FC = () => {
                   </h4>
 
                   <div className="divide-y divide-slate-100">
-                    {selectedOrder.items.map((item: OrderItem, idx: number) => (
-                      <div key={idx} className="py-3 first:pt-0 last:pb-0 text-xs">
-                        <div className="flex justify-between font-extrabold text-slate-900 items-start">
-                          <span className="flex-1 min-w-0 pr-2 leading-relaxed">
-                            {item.nameSnapshot} <span className="font-mono text-slate-400 font-bold text-[10px]">x{item.quantity}</span>
-                          </span>
-                          <span className="font-mono text-slate-700 shrink-0 font-extrabold">
-                            {formatAmount(item.unitPriceSnapshot * item.quantity)}
-                          </span>
-                        </div>
+                    {(() => {
+                      const itemsWithOriginalIndex = selectedOrder.items.map((item, idx) => ({ ...item, originalIndex: idx }));
+                      const sortedItems = [...itemsWithOriginalIndex].sort((a, b) => (a.prepTimeMinutesSnapshot || 10) - (b.prepTimeMinutesSnapshot || 10));
+                      return sortedItems.map((item) => {
+                        const nextStatus = getNextItemStatus(item.itemStatus);
+                        const isServed = item.itemStatus === 'SERVED';
+                        return (
+                          <div key={item.originalIndex} className="py-3 first:pt-0 last:pb-0 text-xs flex flex-col gap-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <label className="flex items-start gap-2.5 cursor-pointer min-w-0 flex-1">
+                                <input
+                                  type="checkbox"
+                                  checked={isServed}
+                                  disabled={isServed || updateItemStatusMutation.isPending}
+                                  onChange={() => {
+                                    if (nextStatus) {
+                                      updateItemStatusMutation.mutate({
+                                        orderId: selectedOrder._id,
+                                        itemIndex: item.originalIndex,
+                                        nextItemStatus: nextStatus,
+                                      });
+                                    }
+                                  }}
+                                  className="w-4.5 h-4.5 rounded border-slate-300 accent-amber-500 cursor-pointer shrink-0 mt-0.5"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <span className={`text-sm font-extrabold leading-tight ${isServed ? 'line-through text-slate-400' : 'text-slate-900'}`}>
+                                    {item.nameSnapshot} <span className="font-mono text-slate-400 font-bold text-xs">x{item.quantity}</span>
+                                  </span>
+                                  {item.prepTimeMinutesSnapshot && item.prepTimeMinutesSnapshot <= 10 && (
+                                    <span className="inline-block ml-2 text-[8px] bg-amber-50 border border-amber-100 text-amber-700 px-1 py-0.2 rounded font-extrabold font-sans tracking-wide uppercase">
+                                      Quick
+                                    </span>
+                                  )}
+                                </div>
+                              </label>
+                              <div className="flex flex-col items-end shrink-0">
+                                <span className="font-mono text-slate-700 font-extrabold">
+                                  {formatAmount(item.unitPriceSnapshot * item.quantity)}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-bold font-mono">
+                                  {item.itemStatus || 'PENDING'}
+                                </span>
+                              </div>
+                            </div>
 
-                        {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                          <div className="text-[10px] text-slate-400 font-sans italic mt-1 pl-2">
-                            + {item.selectedAddOns.map((x) => `${x.name} (${formatAmount(x.priceDelta)})`).join(', ')}
-                          </div>
-                        )}
+                            {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                              <div className="text-[10px] text-slate-400 font-sans italic pl-7">
+                                + {item.selectedAddOns.map((x) => `${x.name} (${formatAmount(x.priceDelta)})`).join(', ')}
+                              </div>
+                            )}
 
-                        {/* Special Instructions (Prominent for kitchen staff) */}
-                        {item.specialInstructions && (
-                          <div className="flex gap-1.5 items-start mt-2 text-[11px] bg-amber-50 border border-amber-100 text-amber-800 p-2.5 rounded-xl italic font-sans leading-relaxed">
-                            <FileText className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" strokeWidth={1.75} />
-                            <span>"{item.specialInstructions}"</span>
+                            {/* Special Instructions (Prominent for kitchen staff) */}
+                            {item.specialInstructions && (
+                              <div className="flex gap-1.5 items-start text-[11px] bg-amber-50 border border-amber-100 text-amber-800 p-2.5 rounded-xl italic font-sans leading-relaxed ml-7">
+                                <FileText className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" strokeWidth={1.75} />
+                                <span>"{item.specialInstructions}"</span>
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                        );
+                      });
+                    })()}
                   </div>
                 </div>
 
@@ -588,44 +740,63 @@ export const ManagerOrders: React.FC = () => {
               </div>
 
               {/* Modal Footer Actions */}
-              <div className="p-5 md:p-6 bg-slate-50/50 border-t border-slate-150 flex flex-col md:flex-row gap-3 shrink-0">
+              <div className="p-5 md:p-6 bg-slate-50/50 border-t border-slate-150 flex flex-col gap-3 shrink-0">
+                <div className="flex flex-col md:flex-row gap-3">
+                  {/* Cancel Ticket (role check: MANAGERS / SUPER_ADMIN) */}
+                  {!isStaff && (selectedOrder.status === 'PENDING' || selectedOrder.status === 'ACCEPTED' || selectedOrder.status === 'PREPARING' || selectedOrder.status === 'READY') && (
+                    <button
+                      onClick={() => setOrderToCancel(selectedOrder)}
+                      className="flex-1 py-3.5 border border-red-200 text-red-600 hover:bg-red-50 text-xs font-extrabold rounded-2xl transition active:scale-[0.98]"
+                    >
+                      Cancel Order
+                    </button>
+                  )}
 
-                {/* Cancel Ticket (role check: MANAGERS / SUPER_ADMIN) */}
-                {!isStaff && (selectedOrder.status === 'PENDING' || selectedOrder.status === 'ACCEPTED' || selectedOrder.status === 'PREPARING' || selectedOrder.status === 'READY') && (
+                  {/* Forward Progress Button */}
+                  {(() => {
+                    const nextAction = getNextOrderStatusAndLabel(selectedOrder.status);
+                    if (nextAction) {
+                      return (
+                        <button
+                          onClick={() =>
+                            updateStatusMutation.mutate({
+                              orderId: selectedOrder._id,
+                              nextStatus: nextAction.status,
+                            })
+                          }
+                          disabled={updateStatusMutation.isPending}
+                          className="flex-1 py-3.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400 text-white text-xs font-extrabold rounded-2xl transition flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]"
+                        >
+                          <span>{nextAction.label}</span>
+                          <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
+                        </button>
+                      );
+                    }
+                    return (
+                      <div className="flex-1 py-3.5 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold rounded-2xl text-center select-none">
+                        Successfully Served Ticket
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {selectedOrder.sessionId && (
                   <button
-                    onClick={() => setOrderToCancel(selectedOrder)}
-                    className="flex-1 py-3.5 border border-red-200 text-red-600 hover:bg-red-50 text-xs font-extrabold rounded-2xl transition active:scale-[0.98]"
+                    onClick={async () => {
+                      try {
+                        await apiClient.post(`/restaurants/${activeRestaurantId}/table-sessions/${selectedOrder.sessionId}/close`);
+                        toast('Table settled and session closed successfully!', 'success');
+                        setSelectedOrder(null);
+                        queryClient.invalidateQueries({ queryKey: ['activeOrdersQueue', activeRestaurantId] });
+                      } catch (err: any) {
+                        toast(err.response?.data?.error?.message || 'Failed to settle table', 'error');
+                      }
+                    }}
+                    className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-2xl transition shadow-md active:scale-[0.98]"
                   >
-                    Cancel Order
+                    Close Table / Settle Bill
                   </button>
                 )}
-
-                {/* Forward Progress Button */}
-                {(() => {
-                  const nextAction = getNextOrderStatusAndLabel(selectedOrder.status);
-                  if (nextAction) {
-                    return (
-                      <button
-                        onClick={() =>
-                          updateStatusMutation.mutate({
-                            orderId: selectedOrder._id,
-                            nextStatus: nextAction.status,
-                          })
-                        }
-                        disabled={updateStatusMutation.isPending}
-                        className="flex-1 py-3.5 bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400 text-white text-xs font-extrabold rounded-2xl transition flex items-center justify-center gap-1.5 shadow-md active:scale-[0.98]"
-                      >
-                        <span>{nextAction.label}</span>
-                        <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
-                      </button>
-                    );
-                  }
-                  return (
-                    <div className="flex-1 py-3.5 bg-slate-100 border border-slate-200 text-slate-400 text-xs font-bold rounded-2xl text-center select-none">
-                      Successfully Served Ticket
-                    </div>
-                  );
-                })()}
               </div>
 
             </motion.div>

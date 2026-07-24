@@ -1,4 +1,5 @@
 import { Schema, model, Document, Types } from 'mongoose';
+import { getOrderStatusRollup } from '../utils/orderStateMachine';
 
 // ==========================================
 // ORDER COUNTER MODEL (for atomic order numbering)
@@ -38,11 +39,17 @@ export interface IOrderItem {
   quantity: number;
   selectedAddOns: IOrderAddOn[];
   specialInstructions?: string;
+  prepTimeMinutesSnapshot?: number;
+  itemStatus: 'PENDING' | 'PREPARING' | 'READY' | 'SERVED';
+  servedAt?: Date;
 }
 
 export interface IOrder extends Document {
   restaurantId: Types.ObjectId;
   tableId: Types.ObjectId;
+  sessionId: Types.ObjectId;
+  roundNumber: number;
+  isMerged: boolean;
   orderNumber: number; // sequential per restaurant
   items: IOrderItem[];
   subtotal: number; // in cents/paise
@@ -74,6 +81,14 @@ const orderItemSchema = new Schema<IOrderItem>(
     quantity: { type: Number, required: true, min: 1 },
     selectedAddOns: [orderAddOnSchema],
     specialInstructions: { type: String, trim: true },
+    prepTimeMinutesSnapshot: { type: Number },
+    itemStatus: {
+      type: String,
+      required: true,
+      enum: ['PENDING', 'PREPARING', 'READY', 'SERVED'],
+      default: 'PENDING',
+    },
+    servedAt: { type: Date },
   },
   { _id: false }
 );
@@ -82,6 +97,9 @@ const orderSchema = new Schema<IOrder>(
   {
     restaurantId: { type: Schema.Types.ObjectId, ref: 'Restaurant', required: true },
     tableId: { type: Schema.Types.ObjectId, ref: 'Table', required: true },
+    sessionId: { type: Schema.Types.ObjectId, ref: 'TableSession', required: true },
+    roundNumber: { type: Number, required: true },
+    isMerged: { type: Boolean, required: true, default: false },
     orderNumber: { type: Number, required: true },
     items: [orderItemSchema],
     subtotal: { type: Number, required: true },
@@ -118,6 +136,16 @@ const orderSchema = new Schema<IOrder>(
     collection: 'orders',
   }
 );
+
+// Pre-save hook to automatically compute and update aggregate status
+orderSchema.pre('save', function (this: any, next) {
+  try {
+    this.status = getOrderStatusRollup(this);
+  } catch (err) {
+    console.error('Error in order pre-save hook:', err);
+  }
+  next();
+});
 
 // Indexes
 // 1. Unique index: Ensure orderNumber is strictly sequential and unique per restaurant tenant

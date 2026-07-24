@@ -16,4 +16,11 @@ router.get('/:restaurantId/orders/:orderId', requireRestaurantAccess as any, ord
 router.patch('/:restaurantId/orders/:orderId/status', requireRestaurantAccess as any, orderController.updateOrderStatus);
 router.post('/:restaurantId/orders/:orderId/cancel', requireRestaurantAccess as any, orderController.cancelOrder);
 
+// Item status tick transitions
+router.patch('/:restaurantId/orders/:orderId/items/:itemIndex/status', requireRestaurantAccess as any, orderController.updateItemStatus);
+
+// Table Session management
+router.get('/:restaurantId/table-sessions/:sessionId', requireRestaurantAccess as any, orderController.getTableSession);
+router.post('/:restaurantId/table-sessions/:sessionId/close', requireRestaurantAccess as any, orderController.closeTableSession);
+
 export default router;

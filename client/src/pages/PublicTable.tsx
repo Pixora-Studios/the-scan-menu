@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search as SearchIcon,
@@ -315,13 +315,12 @@ const OrderTracker: React.FC<OrderTrackerProps> = ({
   return (
     <div className="space-y-6">
       {/* Header bar within tab */}
-      <div className="flex items-center justify-between pb-2">
+      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-white shadow-sm border border-slate-150 py-1.5 px-3 rounded-full transition-colors"
+          className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 hover:text-slate-800 transition-colors shrink-0"
         >
-          <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />
-          Back to list
+          <ArrowLeft className="w-5 h-5 text-slate-900" strokeWidth={2.5} />
         </button>
         <div className="flex items-center gap-2">
           <ConnectionIndicator status={connectionStatus as ConnectionStatus} />
@@ -473,6 +472,7 @@ const OrderTracker: React.FC<OrderTrackerProps> = ({
 export const PublicTable: React.FC = () => {
   const { restaurantSlug, tableToken } = useParams<{ restaurantSlug: string; tableToken: string }>();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Zustand Cart Store
   const { items: cartItems, setTable, addItem, updateQuantity, clearCart } = useCartStore();
@@ -592,26 +592,6 @@ export const PublicTable: React.FC = () => {
     }
   }, [activeCallData]);
 
-  // Query all recent orders' details for the table
-  const { data: recentOrdersData, isLoading: isRecentOrdersLoading } = useQuery({
-    queryKey: ['recentOrdersDetails', recentOrderIds],
-    queryFn: async () => {
-      if (!recentOrderIds || recentOrderIds.length === 0) return [];
-      const promises = recentOrderIds.map(async (id) => {
-        try {
-          const res = await apiClient.get(`/public/orders/${id}`);
-          return res.data?.success ? res.data.data : null;
-        } catch (e) {
-          console.error('Error fetching order details', id, e);
-          return null;
-        }
-      });
-      const results = await Promise.all(promises);
-      return results.filter(Boolean);
-    },
-    enabled: recentOrderIds.length > 0,
-    refetchInterval: activeTab === 'cart-orders' && cartOrdersSubTab === 'orders' ? 10000 : false,
-  });
 
   // Bottom Sheet States for Item Detail
   const [detailQuantity, setDetailQuantity] = useState(1);
@@ -638,6 +618,74 @@ export const PublicTable: React.FC = () => {
     enabled: !!restaurantSlug && !!tableToken,
     retry: false,
   });
+
+  const activeSessionId = tableData?.success ? tableData.data?.table?.activeSessionId : null;
+
+  // Fetch active session and its orders/rounds
+  const { data: sessionDetailsData, isLoading: isSessionLoading } = useQuery({
+    queryKey: ['publicSessionDetails', activeSessionId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/public/table-sessions/${activeSessionId}`);
+      return res.data;
+    },
+    enabled: !!activeSessionId,
+    refetchInterval: activeTab === 'cart-orders' && cartOrdersSubTab === 'orders' ? 5000 : false, // Poll session details while on orders tab
+  });
+
+  // Real-time socket updates for Public Session Details
+  const { socket } = useSocket(null);
+
+  useEffect(() => {
+    if (!socket || !activeSessionId || !sessionDetailsData?.success) return;
+
+    // Join session room
+    socket.emit('join_session', { sessionId: activeSessionId });
+
+    // Join order rooms for all orders under the current session to get their item updates
+    const orders = sessionDetailsData.data.orders || [];
+    orders.forEach((order: any) => {
+      socket.emit('join_order', { orderId: order._id });
+    });
+
+    const handleSessionUpdate = (data: { sessionId: string }) => {
+      if (data.sessionId === activeSessionId) {
+        queryClient.invalidateQueries({ queryKey: ['publicSessionDetails', activeSessionId] });
+      }
+    };
+
+    const handleItemStatusUpdated = (data: { orderId: string }) => {
+      const belongsToSession = orders.some((o: any) => o._id === data.orderId);
+      if (belongsToSession) {
+        queryClient.invalidateQueries({ queryKey: ['publicSessionDetails', activeSessionId] });
+      }
+    };
+
+    const handleOrderStatusUpdated = (data: { orderId: string }) => {
+      const belongsToSession = orders.some((o: any) => o._id === data.orderId);
+      if (belongsToSession) {
+        queryClient.invalidateQueries({ queryKey: ['publicSessionDetails', activeSessionId] });
+      }
+    };
+
+    socket.on('session:updated', handleSessionUpdate);
+    socket.on('order:item_status_updated', handleItemStatusUpdated);
+    socket.on('order:status_updated', handleOrderStatusUpdated);
+
+    return () => {
+      socket.off('session:updated', handleSessionUpdate);
+      socket.off('order:item_status_updated', handleItemStatusUpdated);
+      socket.off('order:status_updated', handleOrderStatusUpdated);
+    };
+  }, [socket, activeSessionId, sessionDetailsData, queryClient]);
+
+  const [expandedRounds, setExpandedRounds] = useState<Record<string, boolean>>({});
+
+  const toggleRound = (roundId: string) => {
+    setExpandedRounds(prev => {
+      const current = prev[roundId] ?? true;
+      return { ...prev, [roundId]: !current };
+    });
+  };
 
   // Query public menu
   const { data: menuData, isLoading: isMenuLoading } = useQuery({
@@ -887,6 +935,7 @@ export const PublicTable: React.FC = () => {
         setRecentOrderIds(stored);
 
         clearCart();
+        queryClient.invalidateQueries({ queryKey: ['publicTable'] });
         setIsOtpModalOpen(false);
         setCustomerNote('');
         setPhoneNumber('');
@@ -1807,7 +1856,7 @@ export const PublicTable: React.FC = () => {
                   taxRatePercent={restaurant.taxRatePercent || 0}
                   onBack={() => setActiveTrackingOrderId(null)}
                 />
-              ) : recentOrderIds.length === 0 ? (
+              ) : !activeSessionId ? (
                 <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-4">
                   <div className="w-12 h-12 bg-slate-50 rounded-full flex items-center justify-center text-slate-400 mx-auto">
                     <Clock className="w-6 h-6 animate-pulse" strokeWidth={1.75} />
@@ -1825,88 +1874,160 @@ export const PublicTable: React.FC = () => {
                     Go to Menu
                   </button>
                 </div>
-              ) : isRecentOrdersLoading ? (
+              ) : isSessionLoading ? (
                 <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 flex items-center justify-center">
                   <Loader className="w-6 h-6 animate-spin text-amber-500" />
                 </div>
-              ) : !recentOrdersData || recentOrdersData.length === 0 ? (
+              ) : !sessionDetailsData || !sessionDetailsData.success || !sessionDetailsData.data.session ? (
                 <div className="text-center py-12 bg-white rounded-3xl border border-slate-150 p-8 space-y-2 text-slate-500 text-xs">
                   Error loading orders. Please contact service.
                 </div>
-              ) : (
-                <div className="space-y-4 font-sans">
-                  {[...recentOrdersData].reverse().map((order: any, idx) => {
-                    // Status Badge colors
-                    const statusColors: Record<string, string> = {
-                      PENDING: 'bg-amber-50 text-amber-800 border-amber-200/60',
-                      ACCEPTED: 'bg-indigo-50 text-indigo-800 border-indigo-200/60',
-                      PREPARING: 'bg-purple-50 text-purple-800 border-purple-200/60',
-                      READY: 'bg-emerald-50 text-emerald-800 border-emerald-200/60',
-                      SERVED: 'bg-slate-50 text-slate-500 border-slate-200/60',
-                      CANCELLED: 'bg-red-50 text-red-800 border-red-200/60',
-                    };
-
-                    const orderStatus = order.status || 'PENDING';
-                    const badgeClass = statusColors[orderStatus] || 'bg-slate-50 text-slate-800 border-slate-200';
-
-                    return (
-                      <div
-                        key={order._id || idx}
-                        className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4 text-left"
-                      >
-                        <div className="flex items-center justify-between border-b border-slate-50 pb-2.5">
-                          <div className="space-y-0.5">
-                            <span className="font-mono text-xs font-extrabold text-slate-900">
-                              Order #{order.orderNumber}
-                            </span>
-                            <p className="text-[10px] text-slate-400 font-mono">
-                              {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                          <span className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border ${badgeClass}`}>
-                            {orderStatus}
-                          </span>
+              ) : (() => {
+                const session = sessionDetailsData.data.session;
+                const orders = sessionDetailsData.data.orders || [];
+                return (
+                  <div className="space-y-5">
+                    {/* Top Session Summary Card */}
+                    <div className="bg-white rounded-3xl p-5 border border-slate-150 shadow-sm space-y-4 text-left">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h4 className="font-display text-2xl font-normal text-slate-900 leading-snug">
+                            {table.displayName}
+                          </h4>
+                          <p className="text-xs text-slate-500 font-medium">
+                            Rounds {orders.map((o: any) => o.roundNumber).join(' & ')} •{' '}
+                            <strong className="text-slate-900 font-extrabold font-mono">
+                              {formatPrice(session.total, currency)} total
+                            </strong>
+                          </p>
                         </div>
+                        <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-100 font-mono">
+                          Session {session.status}
+                        </span>
+                      </div>
 
-                        {/* Order Items */}
-                        <div className="space-y-1.5">
-                          {order.items.map((item: any, i: number) => (
-                            <div key={i} className="flex justify-between items-start text-xs">
-                              <span className="text-slate-800 font-semibold leading-relaxed">
-                                {item.nameSnapshot} <strong className="text-slate-400 font-mono">x{item.quantity}</strong>
-                              </span>
-                              <span className="font-mono font-bold text-slate-900">
-                                {formatPrice(item.unitPriceSnapshot * item.quantity, currency)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Order Footer & Action */}
-                        <div className="flex items-center justify-between pt-3 border-t border-slate-50">
-                          <div>
-                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest block font-mono">
-                              Total Paid/Due
-                            </span>
-                            <span className="font-mono font-black text-sm text-slate-900">
-                              {formatPrice(order.total, currency)}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setActiveTrackingOrderId(order._id);
-                            }}
-                            className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm"
-                          >
-                            <span>Track Status</span>
-                            <ChevronRight className="w-3 h-3" strokeWidth={2.5} />
-                          </button>
+                      {/* Single live status summary across the whole session */}
+                      <div className="bg-slate-50 rounded-2xl p-4 border border-slate-150 flex items-center gap-3">
+                        <Utensils className="w-5 h-5 text-amber-500 shrink-0" strokeWidth={1.75} />
+                        <div className="space-y-0.5 min-w-0 flex-1">
+                          <span className="text-xs font-bold text-slate-900">Live Status Summary</span>
+                          <p className="text-[11px] text-slate-500 truncate leading-relaxed">
+                            {orders.length} round{orders.length > 1 ? 's' : ''} placed. Items served:{' '}
+                            {orders.flatMap((o: any) => o.items).filter((i: any) => i.itemStatus === 'SERVED').length} of{' '}
+                            {orders.flatMap((o: any) => o.items).length} total.
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    </div>
+
+                    {/* Compacting Rounds List */}
+                    <div className="space-y-4">
+                      {orders.map((order: any) => {
+                        const isExpanded = expandedRounds[order._id] ?? true;
+                        const orderTime = new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const sortedItems = [...order.items].sort((a, b) => (a.prepTimeMinutesSnapshot || 10) - (b.prepTimeMinutesSnapshot || 10));
+
+                        return (
+                          <div key={order._id} className="bg-white rounded-3xl border border-slate-150 shadow-sm overflow-hidden text-left">
+                            {/* Compact clickable header */}
+                            <div
+                              onClick={() => toggleRound(order._id)}
+                              className="p-4 flex items-center justify-between border-b border-slate-100 hover:bg-slate-50/50 cursor-pointer transition select-none"
+                            >
+                              <div>
+                                <h5 className="text-xs font-extrabold text-slate-900 flex items-center gap-1.5">
+                                  <span>Round {order.roundNumber}</span>
+                                  {order.isMerged && (
+                                    <span className="text-[9px] bg-indigo-50 border border-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                                      Merged
+                                    </span>
+                                  )}
+                                </h5>
+                                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                  Placed at {orderTime} • {formatPrice(order.total, currency)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-slate-400 font-mono">
+                                  {sortedItems.length} item{sortedItems.length > 1 ? 's' : ''}
+                                </span>
+                                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} strokeWidth={2.5} />
+                              </div>
+                            </div>
+
+                            {/* Collapsible item checklist */}
+                            <AnimatePresence initial={false}>
+                              {isExpanded && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: 'auto', opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  transition={{ duration: 0.2 }}
+                                  className="divide-y divide-slate-50 px-4"
+                                >
+                                  {sortedItems.map((item: any, itemIdx: number) => {
+                                    const isServed = item.itemStatus === 'SERVED';
+                                    const isReady = item.itemStatus === 'READY';
+                                    const isPreparing = item.itemStatus === 'PREPARING';
+
+                                    return (
+                                      <div key={itemIdx} className="py-3 flex items-start justify-between gap-3 text-xs">
+                                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                                          <div className="shrink-0 mt-0.5">
+                                            {isServed ? (
+                                              <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500 fill-emerald-50/30" strokeWidth={2} />
+                                            ) : isReady ? (
+                                              <Utensils className="w-4.5 h-4.5 text-purple-500 animate-pulse" strokeWidth={2} />
+                                            ) : isPreparing ? (
+                                              <ChefHat className="w-4.5 h-4.5 text-indigo-500 animate-pulse" strokeWidth={2} />
+                                            ) : (
+                                              <Clock className="w-4.5 h-4.5 text-amber-500" strokeWidth={1.75} />
+                                            )}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <h6 className={`font-bold text-slate-900 leading-tight ${isServed ? 'line-through text-slate-400 font-normal' : ''}`}>
+                                              {item.nameSnapshot} <span className="font-mono text-slate-400 font-bold text-[10px]">x{item.quantity}</span>
+                                            </h6>
+                                            {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                              <p className="text-[10px] text-slate-400 mt-0.5">+ {item.selectedAddOns.map((x: any) => x.name).join(', ')}</p>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                          {item.prepTimeMinutesSnapshot && item.prepTimeMinutesSnapshot <= 10 && (
+                                            <span className="text-[9px] bg-amber-50 border border-amber-100 text-amber-700 px-1.5 py-0.5 rounded font-extrabold font-sans tracking-wide uppercase shrink-0 leading-none">
+                                              Quick
+                                            </span>
+                                          )}
+                                          <span className={`text-[10px] font-bold font-mono tracking-wide ${isServed ? 'text-slate-400' : 'text-slate-500'}`}>
+                                            {item.itemStatus || 'PENDING'}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+
+                                  {/* Detailed tracking button per round card */}
+                                  <div className="py-3 flex justify-end">
+                                    <button
+                                      onClick={() => setActiveTrackingOrderId(order._id)}
+                                      className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-[10px] rounded-xl flex items-center gap-1 transition shadow-sm"
+                                    >
+                                      <span>Track Round Status</span>
+                                      <ChevronRight className="w-3.5 h-3.5" strokeWidth={2.5} />
+                                    </button>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
         </motion.div>

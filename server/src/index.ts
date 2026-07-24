@@ -52,6 +52,7 @@ import publicRoutes from './routes/public.routes';
 import { errorHandler } from './middleware/errorHandler';
 import { SocketService } from './sockets/socket.service';
 import { logger } from './utils/logger';
+import { Order } from './models/Order';
 
 const app = express();
 const httpServer = createServer(app);
@@ -107,6 +108,16 @@ export const startServer = async () => {
   try {
     await mongoose.connect(mongoURI);
     logger.info('Successfully connected to MongoDB.');
+
+    // Startup safety check for unmigrated orders
+    try {
+      const unmigratedCount = await Order.countDocuments({ sessionId: { $exists: false } });
+      if (unmigratedCount > 0) {
+        logger.warn(`[Startup Safety Check] Found ${unmigratedCount} unmigrated orders lacking sessionId/roundNumber. Please run "npm run migrate:sessions" to migrate legacy orders.`);
+      }
+    } catch (checkErr) {
+      logger.error(checkErr, 'Error running startup safety check for unmigrated orders');
+    }
 
     httpServer.listen(PORT, () => {
       logger.info(`Server is running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
